@@ -56,16 +56,18 @@ def insert_raw(data: list[dict], ingestion_key: int) -> list[int]:
     for row in data:
         cursor.execute(
             """
-            INSERT INTO raw_prices (ingestion_key, producto, precio, presentacion, supermercado, fuente)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO raw_prices (ingestion_key, ean, producto, precio, presentacion, supermercado, fuente, promociones)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 ingestion_key,
+                row.get("ean"),
                 row["producto"],
                 row["precio"],
                 row.get("presentacion", ""),
                 row["supermercado"],
                 row.get("fuente", "selenium"),
+                row.get("promociones"),
             ),
         )
         raw_ids.append(cursor.lastrowid)
@@ -79,35 +81,136 @@ def insert_raw(data: list[dict], ingestion_key: int) -> list[int]:
 # ---------------------------------------------------------------------------
 # 2. HELPERS: upsert de dimensiones
 # ---------------------------------------------------------------------------
-def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict) -> int:
-    """Inserta o actualiza dim_product. Retorna product_id."""
-    cursor.execute(
-        """
-        INSERT INTO dim_product
-            (nombre, categoria, unit_quantity, unit_type, unit_multiplier,
-             base_quantity, presentacion_raw)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            categoria        = COALESCE(VALUES(categoria), categoria),
-            unit_quantity    = VALUES(unit_quantity),
-            unit_type        = VALUES(unit_type),
-            unit_multiplier  = VALUES(unit_multiplier),
-            base_quantity    = VALUES(base_quantity),
-            presentacion_raw = VALUES(presentacion_raw)
-        """,
-        (
-            nombre,
-            categoria,
-            parsed["unit_quantity"],
-            parsed["unit_type"],
-            parsed["unit_multiplier"],
-            parsed["base_quantity"],
-            parsed["presentacion_raw"],
-        ),
-    )
-    # Recuperar ID (INSERT o ya existente)
-    cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s", (nombre,))
-    return cursor.fetchone()[0]
+def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str = None) -> int:
+    """Inserta o actualiza dim_product usando EAN (primario) o Nombre (secundario)."""
+    if ean:
+        # 1. Buscar por EAN
+        cursor.execute("SELECT product_id FROM dim_product WHERE ean = %s", (ean,))
+        row = cursor.fetchone()
+        if row:
+            product_id = row[0]
+            cursor.execute(
+                """
+                UPDATE dim_product SET
+                    nombre           = %s,
+                    categoria        = COALESCE(%s, categoria),
+                    unit_quantity    = %s,
+                    unit_type        = %s,
+                    unit_multiplier  = %s,
+                    base_quantity    = %s,
+                    presentacion_raw = %s
+                WHERE product_id = %s
+                """,
+                (
+                    nombre,
+                    categoria,
+                    parsed["unit_quantity"],
+                    parsed["unit_type"],
+                    parsed["unit_multiplier"],
+                    parsed["base_quantity"],
+                    parsed["presentacion_raw"],
+                    product_id,
+                )
+            )
+            return product_id
+        
+        # 2. Si no existe por EAN, buscar por Nombre que no tenga EAN asignado
+        cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s AND ean IS NULL LIMIT 1", (nombre,))
+        row = cursor.fetchone()
+        if row:
+            product_id = row[0]
+            cursor.execute(
+                """
+                UPDATE dim_product SET
+                    ean              = %s,
+                    categoria        = COALESCE(%s, categoria),
+                    unit_quantity    = %s,
+                    unit_type        = %s,
+                    unit_multiplier  = %s,
+                    base_quantity    = %s,
+                    presentacion_raw = %s
+                WHERE product_id = %s
+                """,
+                (
+                    ean,
+                    categoria,
+                    parsed["unit_quantity"],
+                    parsed["unit_type"],
+                    parsed["unit_multiplier"],
+                    parsed["base_quantity"],
+                    parsed["presentacion_raw"],
+                    product_id,
+                )
+            )
+            return product_id
+
+        # 3. Si no existe por EAN ni por Nombre sin EAN, insertar nuevo
+        cursor.execute(
+            """
+            INSERT INTO dim_product
+                (ean, nombre, categoria, unit_quantity, unit_type, unit_multiplier,
+                 base_quantity, presentacion_raw)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                ean,
+                nombre,
+                categoria,
+                parsed["unit_quantity"],
+                parsed["unit_type"],
+                parsed["unit_multiplier"],
+                parsed["base_quantity"],
+                parsed["presentacion_raw"],
+            )
+        )
+        return cursor.lastrowid
+    else:
+        # Buscar por Nombre únicamente (para fallbacks)
+        cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s LIMIT 1", (nombre,))
+        row = cursor.fetchone()
+        if row:
+            product_id = row[0]
+            cursor.execute(
+                """
+                UPDATE dim_product SET
+                    categoria        = COALESCE(%s, categoria),
+                    unit_quantity    = %s,
+                    unit_type        = %s,
+                    unit_multiplier  = %s,
+                    base_quantity    = %s,
+                    presentacion_raw = %s
+                WHERE product_id = %s
+                """,
+                (
+                    categoria,
+                    parsed["unit_quantity"],
+                    parsed["unit_type"],
+                    parsed["unit_multiplier"],
+                    parsed["base_quantity"],
+                    parsed["presentacion_raw"],
+                    product_id,
+                )
+            )
+            return product_id
+        else:
+            cursor.execute(
+                """
+                INSERT INTO dim_product
+                    (ean, nombre, categoria, unit_quantity, unit_type, unit_multiplier,
+                     base_quantity, presentacion_raw)
+                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    nombre,
+                    categoria,
+                    parsed["unit_quantity"],
+                    parsed["unit_type"],
+                    parsed["unit_multiplier"],
+                    parsed["base_quantity"],
+                    parsed["presentacion_raw"],
+                )
+            )
+            return cursor.lastrowid
 
 
 def _upsert_supermarket(cursor, nombre: str) -> int:
@@ -192,7 +295,7 @@ def insert_dimensional(data: list[dict], raw_ids: list[int], ingestion_key: int)
             parsed = parse_presentation(row["producto"])
 
         # --- Upsert dimensiones ---
-        product_id     = _upsert_product(cursor, row["producto"], row.get("categoria"), parsed)
+        product_id     = _upsert_product(cursor, row["producto"], row.get("categoria"), parsed, row.get("ean"))
         supermarket_id = _upsert_supermarket(cursor, row["supermercado"])
         source_id      = _get_source_id(cursor, row.get("fuente", "selenium"))
 

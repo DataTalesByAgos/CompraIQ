@@ -58,6 +58,7 @@ def _extract_via_api() -> list[dict] | None:
                 measure     = sku.get("measurementUnit", "")
                 multiplier  = sku.get("unitMultiplier", 1)
                 presentacion = f"{multiplier} {measure}".strip() if measure else ""
+                ean         = sku.get("ean")
             except (IndexError, KeyError):
                 continue
             
@@ -74,6 +75,7 @@ def _extract_via_api() -> list[dict] | None:
                 "categoria":    categoria,
                 "precio":       precio,
                 "presentacion": presentacion,
+                "ean":          ean,
                 "supermercado": SUPERMERCADO,
                 "fuente":       "api",
             })
@@ -165,6 +167,7 @@ def _extract_via_selenium() -> list[dict]:
                 "producto":     nombre,
                 "precio":       precio,
                 "presentacion": presentacion,
+                "ean":          None,
                 "supermercado": SUPERMERCADO,
                 "fuente":       "selenium",
             })

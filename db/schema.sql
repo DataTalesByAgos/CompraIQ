@@ -14,11 +14,13 @@ CREATE TABLE IF NOT EXISTS dim_ingestion (
 CREATE TABLE IF NOT EXISTS raw_prices (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     ingestion_key INT         NOT NULL,
+    ean           VARCHAR(50) NULL,
     producto      TEXT        NOT NULL,
     precio        TEXT        NOT NULL,
     presentacion  TEXT,                                    -- ej: '500 g', '1.5 L', '6 x 300 ml'
     supermercado  TEXT        NOT NULL,
     fuente        VARCHAR(20) NOT NULL DEFAULT 'selenium', -- 'api' | 'selenium'
+    promociones   TEXT        NULL,
     fecha         TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (ingestion_key) REFERENCES dim_ingestion(ingestion_key) ON DELETE CASCADE
 );
@@ -31,7 +33,8 @@ CREATE TABLE IF NOT EXISTS raw_prices (
 -- dim_product
 CREATE TABLE IF NOT EXISTS dim_product (
     product_id          INT AUTO_INCREMENT PRIMARY KEY,
-    nombre              VARCHAR(255)   NOT NULL UNIQUE,
+    ean                 VARCHAR(50) NULL,
+    nombre              VARCHAR(255)   NOT NULL,
     categoria           VARCHAR(100),
     -- Unidad de presentación (parseada del texto crudo)
     unit_quantity       DECIMAL(10,3),                   -- ej: 500 / 1.5 / 300
@@ -40,7 +43,9 @@ CREATE TABLE IF NOT EXISTS dim_product (
     -- Normalizado a gramos o mililitros para comparación BI
     base_quantity       DECIMAL(10,3),                   -- unit_quantity * unit_multiplier (en g o ml)
     presentacion_raw    VARCHAR(100),                    -- texto original sin limpiar
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX uq_ean (ean),
+    INDEX idx_nombre (nombre)
 );
 
 -- dim_supermarket

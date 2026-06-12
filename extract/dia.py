@@ -48,6 +48,7 @@ def extract_dia() -> list[dict]:
                     measure     = sku.get("measurementUnit", "")
                     multiplier  = sku.get("unitMultiplier", 1)
                     presentacion = f"{multiplier} {measure}".strip() if measure else ""
+                    ean         = sku.get("ean")
                 except (IndexError, KeyError):
                     continue
                 
@@ -63,6 +64,7 @@ def extract_dia() -> list[dict]:
                     "categoria":    categoria,
                     "precio":       precio,
                     "presentacion": presentacion,
+                    "ean":          ean,
                     "supermercado": SUPERMERCADO,
                     "fuente":       "api",
                 })

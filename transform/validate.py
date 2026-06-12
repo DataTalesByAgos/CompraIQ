@@ -70,7 +70,12 @@ def validate(data: list[dict]) -> tuple[list[dict], list[dict]]:
         row["supermercado"] = super_limpio
 
         # 5. Deduplicación dentro del mismo lote (batch)
-        unique_key = (producto_limpio, super_limpio)
+        ean_val = row.get("ean")
+        if ean_val:
+            unique_key = (f"ean_{ean_val}", super_limpio)
+        else:
+            unique_key = (f"name_{producto_limpio}", super_limpio)
+
         if unique_key in seen:
             rejected.append({**row, "__reason": "duplicado en este lote"})
         else:

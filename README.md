@@ -2,7 +2,7 @@
 
 ![Diagrama de Arquitectura de Cazador de Precios](cazador_precios.png)
 
-Un pipeline de datos ETL (Extracción, Transformación y Carga) robusto y de grado analítico para monitorear precios de supermercados en Argentina (Carrefour, Coto y Día). El sistema extrae datos utilizando APIs nativas, los estandariza, normaliza sus unidades de medida y los carga en una base de datos MySQL estructurada bajo un Modelo en Estrella, dejándolos listos para su visualización en Power BI.
+Un pipeline de datos ETL robusto y de grado analítico para monitorear precios de supermercados en Argentina (Carrefour, Coto y Día). El sistema extrae datos utilizando APIs nativas, los estandariza, normaliza sus unidades de medida y los carga en una base de datos MySQL estructurada bajo un Modelo en Estrella, dejándolos listos para su visualización en Power BI.
 
 ## Características Principales
 
@@ -11,7 +11,7 @@ Un pipeline de datos ETL (Extracción, Transformación y Carga) robusto y de gra
 - **Cálculo Analítico Delegado**: La estandarización de métricas críticas, como el cálculo del *Precio por Unidad* (ej. precio por 100g o por 1L), se delega al motor SQL para garantizar la integridad aritmética y evitar divisiones por cero.
 - **Arquitectura de Contenedores Efímeros**: Sigue mejores prácticas de infraestructura. El proceso de extracción no permanece activo consumiendo memoria; se ejecuta de forma aislada e instantánea bajo demanda mediante un scheduler externo (Cron / Task Scheduler).
 
-## Estructura de Datos (Modelo en Estrella)
+## Estructura de Datos
 
 La base de datos MySQL (`prices`) está optimizada para lectura analítica:
 
@@ -31,13 +31,14 @@ La base de datos MySQL (`prices`) está optimizada para lectura analítica:
 1. **Clonar el repositorio y configurar variables:**
    Asegúrese de contar con un archivo `.env` en la raíz del proyecto:
    ```env
-   DB_HOST=mysql
-   DB_USER=root
-   DB_PASSWORD=supersecret
-   DB_NAME=prices
+   # Ejemplo
+   DB_HOST=
+   DB_USER=
+   DB_PASSWORD=
+   DB_NAME=
 
-   MYSQL_ROOT_PASSWORD=supersecret
-   MYSQL_DATABASE=prices
+   MYSQL_ROOT_PASSWORD=
+   MYSQL_DATABASE=
    ```
 
 2. **Levantar la Infraestructura (Base de Datos):**
@@ -56,7 +57,7 @@ Para forzar una extracción inmediata y ver los logs en la terminal:
 docker compose run --rm app python main.py --manual
 ```
 
-### Ejecución Programada (Producción)
+### Ejecución Programada
 Se recomienda delegar la calendarización al sistema operativo anfitrión.
 
 **En Linux (Crontab):**

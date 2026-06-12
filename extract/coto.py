@@ -56,12 +56,14 @@ def extract_coto() -> list[dict]:
             # En Coto la presentación suele estar en el nombre.
             # No tienen unitMultiplier o unitType estructurado aquí, parse_units.py se encargará.
             presentacion = ""
+            ean = item_data.get("product_main_ean")
 
             products.append({
                 "producto":     nombre,
                 "categoria":    categoria,
                 "precio":       precio_str,
                 "presentacion": presentacion,
+                "ean":          ean,
                 "supermercado": SUPERMERCADO,
                 "fuente":       "api",
             })
