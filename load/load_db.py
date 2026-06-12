@@ -3,6 +3,7 @@ import time
 from datetime import date
 import mysql.connector
 from transform.parse_units import parse_presentation, calc_price_per_unit
+from transform.classify import predict_category
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,8 @@ def insert_raw(data: list[dict], ingestion_key: int) -> list[int]:
 # ---------------------------------------------------------------------------
 def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str = None) -> int:
     """Inserta o actualiza dim_product usando EAN (primario) o Nombre (secundario)."""
+    if not categoria:
+        categoria = predict_category(nombre)
     if ean:
         # 1. Buscar por EAN
         cursor.execute("SELECT product_id FROM dim_product WHERE ean = %s", (ean,))
