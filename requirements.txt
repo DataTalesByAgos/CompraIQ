@@ -1,6 +1,4 @@
 # Extracción
-selenium==4.20.0
-webdriver-manager==4.0.1
 requests==2.31.0
 
 # Base de datos

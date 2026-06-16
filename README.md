@@ -55,18 +55,18 @@ flowchart LR
 
 ### Estrategia de extracción
 
-Cada supermercado tiene su propio extractor. La lógica es: **API primero, Selenium como fallback**.
+Cada supermercado tiene su propio extractor. La extracción es 100% directa por API.
 
-| Supermercado | Fuente primaria | Fallback |
-|---|---|---|
-| Carrefour | VTEX API (`/catalog_system/pub/products/search`) | Selenium headless |
-| Dia | VTEX API | — |
-| Jumbo | VTEX API (`vtex_base`) | — |
-| Disco | VTEX API (`vtex_base`) | — |
-| Vea | VTEX API (`vtex_base`) | — |
-| Coto | API propia | — |
+| Supermercado | Fuente primaria |
+|---|---|
+| Carrefour | VTEX API (`/catalog_system/pub/products/search`) |
+| Dia | VTEX API |
+| Jumbo | VTEX API (`vtex_base`) |
+| Disco | VTEX API (`vtex_base`) |
+| Vea | VTEX API (`vtex_base`) |
+| Coto | API propia |
 
-Los cinco supermercados VTEX usan una base común (`vtex_base.py`) que maneja paginación y parseo de ítems. Carrefour tiene su propio extractor con mayor control sobre el scraping de Selenium.
+Los cinco supermercados VTEX usan una base común (`vtex_base.py`) que maneja paginación y parseo de ítems.
 
 ---
 
@@ -218,7 +218,7 @@ flowchart TD
 
 ```bash
 # Requiere que el contenedor de MySQL esté corriendo
-python train_model.py
+uv run python train_model.py
 ```
 
 Esto conecta a la base, hace bootstrap de labels con las reglas de keywords, entrena el pipeline `TF-IDF + LogisticRegression` y guarda el modelo en `model/category_model.pkl`. Se recomienda re-entrenar cuando haya un volumen significativo de nuevos productos.
@@ -241,9 +241,12 @@ El módulo `transform/parse_units.py` parsea el texto crudo de presentación y l
 
 El campo `price_per_unit` en `fact_prices` permite comparar el precio real por 100g o 100ml independientemente del tamaño del envase.
 
----
-
 ## Inicio Rápido
+
+El proyecto está diseñado con una separación clara de responsabilidades:
+1. **Infraestructura (Docker):** Administra la base de datos MySQL y la UI de administración.
+2. **Entorno de desarrollo local (uv):** Maneja el entorno virtual y la ejecución de los scripts de Python.
+3. **Calidad del código (Ruff + pyproject.toml):** Valida el estilo y buenas prácticas localmente.
 
 ### 1. Configurar variables de entorno
 
@@ -261,7 +264,9 @@ DB_PASSWORD=...
 DB_NAME=prices
 ```
 
-### 2. Levantar la base de datos
+### 2. Levantar la base de datos (Docker)
+
+La base de datos MySQL debe estar corriendo para poder ejecutar el pipeline o el script de entrenamiento:
 
 ```bash
 docker compose up mysql phpmyadmin -d
@@ -269,29 +274,55 @@ docker compose up mysql phpmyadmin -d
 
 El schema se inicializa automáticamente desde `db/schema.sql` en el primer arranque. phpMyAdmin queda disponible en `http://localhost:8080`.
 
-### 3. Ejecutar el pipeline
+### 3. Sincronizar dependencias locales (uv)
 
-**Modo manual (local):**
+Para ejecutar scripts localmente en tu máquina, inicializa el entorno virtual administrado por `uv`:
+
 ```bash
-python main.py
+# Inicializar entorno virtual e instalar dependencias locales automáticamente
+uv sync
 ```
 
-**Modo automatizado (Docker + scheduler):**
+### 4. Ejecutar el pipeline
+
+**Modo manual (Local con uv - Recomendado para desarrollo):**
+```bash
+uv run python main.py
+```
+
+**Modo automatizado (Docker + cron scheduler):**
 ```bash
 docker compose --profile cron up
 ```
 
-### 4. Entrenar el clasificador ML (primera vez o cuando corresponda)
+### 5. Entrenar el clasificador ML (Manual con uv)
 
+Una vez que tengas datos en tu base de datos local, puedes entrenar el modelo:
 ```bash
-python train_model.py
+uv run python train_model.py
 ```
 
-### 5. Backfill de EAN (datos históricos)
+### 6. Backfill de EAN (Manual con uv)
 
 Si hay productos en la base sin EAN que ya tienen un gemelo con EAN cargado después:
 ```bash
-python backfill_ean.py
+uv run python backfill_ean.py
+```
+
+---
+
+## Calidad de Código & Linting
+
+Usamos **Ruff** configurado en el archivo `pyproject.toml` para mantener el código limpio y estandarizado de acuerdo a buenas prácticas de la industria.
+
+### Chequear linting:
+```bash
+uv run ruff check .
+```
+
+### Autoformatear código:
+```bash
+uv run ruff format .
 ```
 
 ---
@@ -309,10 +340,12 @@ python backfill_ean.py
 
 | Capa | Tecnología |
 |---|---|
-| Extracción | `requests` (API), `selenium` + Chromium headless (fallback) |
+| Extracción | `requests` (API VTEX y API propia) |
 | Transformación | Python puro + `re` para parseo de unidades |
 | Clasificación | `scikit-learn` (TF-IDF + Logistic Regression) |
 | Base de datos | MySQL 8 (Docker) |
+| Calidad | Ruff + `pyproject.toml` |
+| Gestión de Entorno | uv (Astral) |
 | Orquestación | Docker Compose + N8N (scheduler externo) |
 | UI de base | phpMyAdmin |
 
@@ -324,7 +357,7 @@ python backfill_ean.py
 supermercado/
 ├── extract/
 │   ├── vtex_base.py        # Extractor genérico para supermercados VTEX
-│   ├── carrefour.py        # Extractor Carrefour (API + Selenium fallback)
+│   ├── carrefour.py        # Extractor Carrefour (API VTEX)
 │   ├── dia.py              # Extractor Dia
 │   ├── coto.py             # Extractor Coto
 │   ├── jumbo.py            # Extractor Jumbo
@@ -346,6 +379,7 @@ supermercado/
 ├── backfill_ean.py         # Utilidad de backfill de EAN
 ├── Dockerfile
 ├── docker-compose.yml
+├── pyproject.toml          # Configuración de Ruff
 └── requirements.txt
 ```
 
@@ -353,11 +387,11 @@ supermercado/
 
 ## Proveniencia de los Datos
 
-Los datos se obtienen directamente desde las APIs públicas y sitios web de cada supermercado. No se utilizan bases de datos de terceros ni scrapers pagos.
+Los datos se obtienen directamente desde las APIs públicas de cada supermercado.
 
 | Fuente | Método | URL base |
 |---|---|---|
-| Carrefour | VTEX API + Selenium | `carrefour.com.ar` |
+| Carrefour | VTEX API | `carrefour.com.ar` |
 | Dia | VTEX API | `diaonline.supermercadosdia.com.ar` |
 | Jumbo | VTEX API | `jumbo.com.ar` |
 | Disco | VTEX API | `disco.com.ar` |
