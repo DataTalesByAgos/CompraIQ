@@ -1,72 +1,116 @@
 import os
+import re
 import pickle
 
 _MODEL = None
 _MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "model", "category_model.pkl")
 
-# Static keyword mapping fallback dictionary
+# Must be kept in sync with train_model.py
 CATEGORIES = {
     "Lácteos": [
-        "leche", "yogur", "queso", "manteca", "crema", "tregar", "milk", "sancor", "serenisima", 
-        "ricota", "dulce de leche", "ddl", "cremoso", "port salut", "musarela", "muzzarella", "activia"
+        "dulce de leche", "port salut", "queso crema", "queso cremoso", "queso rallado",
+        "leche", "yogur", "queso", "manteca", "ricota", "musarela", "muzzarella",
+        "tregar", "milk", "sancor", "serenisima", "ddl", "cremoso", "activia",
     ],
     "Básicos de Almacén": [
-        "arroz", "fideos", "aceite", "sal", "azucar", "harina", "puré", "salsa", "legumbres", 
-        "fideo", "polenta", "lentejas", "garbanzos", "arvejas", "mayonesa", "ketchup", "mostaza", 
-        "vinagre", "caldo", "orégano", "pimienta", "pimentón", "aderezo", "gallo", "matarazzo", "lucchetti"
+        "caldo de carne", "caldo de verdura", "caldo de pollo",
+        "pan rallado", "harina de maiz", "pasta dental",
+        "arroz", "fideos", "fideo", "aceite", "azucar", "harina",
+        "puré", "salsa", "legumbres", "polenta", "lentejas", "garbanzos", "arvejas",
+        "mayonesa", "ketchup", "mostaza", "vinagre", "caldo", "orégano",
+        "pimienta", "pimentón", "aderezo", "matarazzo", "lucchetti",
     ],
     "Bebidas con Alcohol": [
-        "cerveza", "vino", "fernet", "gin", "whisky", "champagne", "licor", "sidra", "malbec", 
-        "cabernet", "brut", "vodka", "aperitivo", "campari", "heineken", "quilmes", "stella", "brahma", "corona"
+        "cerveza", "vino", "fernet", "whisky", "champagne", "licor", "sidra",
+        "malbec", "cabernet", "vodka", "aperitivo", "campari",
+        "heineken", "quilmes", "stella artois", "brahma",
     ],
     "Bebidas sin Alcohol": [
-        "gaseosa", "agua", "jugo", "coca", "pepsi", "tonica", "aquarius", "levite", "sprite", 
-        "fanta", "soda", "pomelo", "terma", "cepita", "villavicencio", "villa del sur"
+        "coca cola zero", "coca cola light", "coca cola",
+        "villa del sur", "gaseosa", "agua", "jugo", "pepsi", "tonica",
+        "aquarius", "levite", "sprite", "fanta", "soda", "terma",
+        "cepita", "villavicencio",
     ],
     "Frutas y Verduras": [
-        "papa", "cebolla", "tomate", "manzana", "banana", "lechuga", "naranja", "zanahoria", 
-        "limon", "palta", "frutilla", "pera", "verdura", "fruta", "zapallo", "espinaca", "acelga", "morrón"
+        "papa frita",
+        "papa", "cebolla", "tomate", "manzana", "banana", "lechuga", "naranja",
+        "zanahoria", "limon", "palta", "frutilla", "pera", "verdura", "fruta",
+        "zapallo", "espinaca", "acelga", "morrón",
     ],
     "Carnicería y Pescadería": [
-        "carne", "pollo", "hamburguesa", "paty", "pescado", "asado", "lomo", "peceto", "milanesa", 
-        "bife", "vacio", "matambre", "cerdo", "chorizo", "merluza", "salmon", "atun", "swift"
+        "medallón de carne", "milanesa de pollo", "milanesa de carne",
+        "pechuga de pollo", "filet de merluza",
+        "carne", "pollo", "paty", "pescado", "asado", "lomo", "peceto", "milanesa",
+        "bife", "vacio", "matambre", "cerdo", "chorizo", "merluza", "salmon", "atun", "swift",
     ],
     "Panadería y Galletitas": [
-        "pan", "galletitas", "alfajor", "lactal", "budin", "magdalenas", "galletitas oreo", 
-        "chocolinas", "criollitas", "tostadas", "bizcochitos", "pan rallado", "artesano", "fargo", "bimbo"
+        "pan de hamburguesa", "pan de molde", "pan lactal", "pan integral",
+        "pan dulce", "pan negro", "pan blanco", "pan sandwich", "pan triple",
+        "galletitas oreo", "galletitas", "alfajor", "lactal", "budin", "magdalenas",
+        "chocolinas", "criollitas", "tostadas", "bizcochitos", "artesano", "fargo", "bimbo",
+        "pan",
     ],
     "Cuidado Personal": [
-        "shampoo", "desodorante", "jabon tocador", "dentifrico", "pasta dental", "pañales", 
-        "papel higienico", "colgate", "dove", "rexona", "toallitas", "protector solar", "acondicionador"
+        "protector solar", "papel higienico", "jabon tocador", "pasta dental",
+        "shampoo", "desodorante", "dentifrico", "pañales",
+        "colgate", "dove", "rexona", "toallitas", "acondicionador",
     ],
     "Limpieza del Hogar": [
-        "detergente", "lavandina", "desinfectante", "jabon liquido", "suavizante", "rollo cocina", 
-        "ala", "skip", "vivere", "cif", "poett", "procacen", "trapo", "magistral", "ayudín"
+        "jabon liquido", "rollo cocina",
+        "detergente", "lavandina", "desinfectante", "suavizante",
+        "skip", "vivere", "cif", "poett", "procacen", "trapo", "magistral", "ayudín",
     ],
     "Congelados y Otros": [
-        "helado", "congelados", "nuggets", "papas fritas congeladas", "patitas", "super congelados", "franchesco"
-    ]
+        "papas fritas congeladas", "super congelados",
+        "helado", "congelados", "nuggets", "patitas", "franchesco",
+    ],
 }
 
-def _fallback_predict(product_name: str) -> str:
-    """Basic keyword matching fallback if scikit-learn model is missing."""
-    name_lower = product_name.lower()
+
+def _build_keyword_index() -> list[tuple[str, str, re.Pattern]]:
+    """
+    Builds a flat (keyword, category, pattern) list sorted by keyword length descending.
+    Longest keywords are tried first so multi-word phrases beat lone words.
+    Single-word keywords use word boundaries to avoid substring false matches.
+    """
+    entries = []
     for category, keywords in CATEGORIES.items():
         for kw in keywords:
-            if kw in name_lower:
-                return category
+            if " " in kw:
+                pattern = re.compile(re.escape(kw), re.IGNORECASE)
+            else:
+                pattern = re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE)
+            entries.append((kw, category, pattern))
+    entries.sort(key=lambda e: len(e[0]), reverse=True)
+    return entries
+
+
+_KW_INDEX = _build_keyword_index()
+
+
+def _fallback_predict(product_name: str) -> str:
+    """Keyword matching fallback using longest-match-wins with word boundaries."""
+    for _kw, category, pattern in _KW_INDEX:
+        if pattern.search(product_name):
+            return category
     return "Otros / Sin Categoria"
+
+
+CONFIDENCE_THRESHOLD = 0.80
+
 
 def predict_category(product_name: str) -> str:
     """
     Predicts product category using the trained Logistic Regression model.
-    Falls back to keyword matching if the model isn't trained yet.
+    Applies a confidence threshold: if the model's top prediction probability
+    is below CONFIDENCE_THRESHOLD, falls back to keyword matching.
+    Falls back entirely to keyword matching if the model isn't trained yet.
     """
     global _MODEL
-    
+
     if not product_name:
         return "Otros / Sin Categoria"
-        
+
     # Lazy load the model from disk
     if _MODEL is None:
         if os.path.exists(_MODEL_PATH):
@@ -75,14 +119,26 @@ def predict_category(product_name: str) -> str:
                     _MODEL = pickle.load(f)
             except Exception as e:
                 print(f"    [WARN] Failed to load ML model from {_MODEL_PATH}: {e}")
-                
-    # If loaded successfully, make prediction
+
+    # If loaded successfully, make prediction with confidence check
     if _MODEL is not None:
         try:
-            pred = _MODEL.predict([product_name])
-            return str(pred[0])
+            proba = _MODEL.predict_proba([product_name])[0]
+            max_conf = proba.max()
+
+            if max_conf >= CONFIDENCE_THRESHOLD:
+                pred = _MODEL.classes_[proba.argmax()]
+                return str(pred)
+            else:
+                # Low confidence — trust keyword rules instead
+                fallback = _fallback_predict(product_name)
+                if fallback != "Otros / Sin Categoria":
+                    return fallback
+                # Accept low-confidence ML prediction as last resort
+                pred = _MODEL.classes_[proba.argmax()]
+                return str(pred)
         except Exception as e:
             print(f"    [WARN] Prediction error: {e}")
-            
+
     # Fallback to rules
     return _fallback_predict(product_name)
