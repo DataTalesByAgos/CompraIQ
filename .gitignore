@@ -10,3 +10,17 @@ __pycache__/
 data/
 *.csv
 .env
+
+# Backend specific ignored paths
+backend/venv/
+backend/.env/
+backend/.env.local
+backend/__pycache__/
+backend/*.pyc
+backend/.ipynb_checkpoints/
+backend/*.log
+backend/data/
+backend/*.csv
+backend/.env
+backend/scratch/
+backend/.pytest_cache/

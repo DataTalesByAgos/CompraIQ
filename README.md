@@ -355,33 +355,41 @@ uv run ruff format .
 
 ```
 supermercado/
-├── extract/
-│   ├── vtex_base.py        # Extractor genérico para supermercados VTEX
-│   ├── carrefour.py        # Extractor Carrefour (API VTEX)
-│   ├── dia.py              # Extractor Dia
-│   ├── coto.py             # Extractor Coto
-│   ├── jumbo.py            # Extractor Jumbo
-│   ├── disco.py            # Extractor Disco
-│   └── vea.py              # Extractor Vea
-├── transform/
-│   ├── classify.py         # Clasificador ML de categorías
-│   ├── parse_units.py      # Parser y normalizador de unidades
-│   ├── validate.py         # Validación y deduplicación del lote
-│   └── clean_data.py       # Limpieza auxiliar
-├── load/
-│   └── load_db.py          # Upsert dimensional + inserción en fact_prices
-├── db/
-│   └── schema.sql          # DDL del star schema
-├── model/
-│   └── category_model.pkl  # Modelo ML entrenado (generado por train_model.py)
-├── main.py                 # Punto de entrada del pipeline
-├── train_model.py          # Script de entrenamiento del clasificador
-├── backfill_ean.py         # Utilidad de backfill de EAN
-├── Dockerfile
+├── backend/
+│   ├── extract/
+│   │   ├── vtex_base.py        # Extractor genérico para supermercados VTEX
+│   │   ├── carrefour.py        # Extractor Carrefour (API VTEX)
+│   │   ├── dia.py              # Extractor Dia
+│   │   ├── coto.py             # Extractor Coto
+│   │   ├── jumbo.py            # Extractor Jumbo
+│   │   ├── disco.py            # Extractor Disco
+│   │   └── vea.py              # Extractor Vea
+│   ├── transform/
+│   │   ├── classify.py         # Clasificador ML de categorías
+│   │   ├── parse_units.py      # Parser y normalizador de unidades
+│   │   ├── validate.py         # Validación y deduplicación del lote
+│   │   └── clean_data.py       # Limpieza auxiliar
+│   ├── load/
+│   │   └── load_db.py          # Upsert dimensional + inserción en fact_prices
+│   ├── db/
+│   │   └── schema.sql          # DDL del star schema
+│   ├── model/
+│   │   └── category_model.pkl  # Modelo ML entrenado (generado por train_model.py)
+│   ├── tests/                  # Pruebas automatizadas del pipeline
+│   ├── main.py                 # Punto de entrada del pipeline
+│   ├── train_model.py          # Script de entrenamiento del clasificador
+│   ├── backfill_ean.py         # Utilidad de backfill de EAN
+│   ├── Dockerfile
+│   ├── pyproject.toml          # Configuración de Ruff
+│   └── requirements.txt
+├── frontend/
+│   ├── index.html              # Interfaz de usuario del dashboard
+│   ├── style.css               # Estilos de la UI (Glassmorphic design)
+│   └── app.js                  # Lógica interactiva y simulador
 ├── docker-compose.yml
-├── pyproject.toml          # Configuración de Ruff
-└── requirements.txt
+└── README.md
 ```
+
 
 ---
 
