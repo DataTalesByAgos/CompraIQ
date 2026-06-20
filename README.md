@@ -1,409 +1,52 @@
-# Cazador de Precios 🛒
+# CompraIQ 🛒
 
-Pipeline ETL automatizado de precios de supermercados en Argentina.
+CompraIQ es una plataforma inteligente de planificación de compras para supermercados argentinos que ayuda a los usuarios a decidir qué comprar, dónde comprar y cuándo comprar para maximizar el ahorro.
 
-Extrae precios de Carrefour, Dia, Coto, Jumbo, Disco y Vea — los normaliza, clasifica y almacena en un data warehouse relacional para análisis comparativo.
+A diferencia de los comparadores tradicionales de precios, CompraIQ combina información de productos, promociones bancarias, tarjetas de crédito y débito, billeteras virtuales, programas de beneficios y topes de reintegro para generar recomendaciones personalizadas que optimizan el gasto total de una compra.
 
----
-
-## El Problema
-
-Comparar precios entre supermercados en Argentina es difícil. Los sitios no tienen APIs públicas documentadas, los formatos de presentación son inconsistentes ("500 g", "6 x 300 ml", "1.5 L") y las categorías que publica cada supermercado no son homogéneas entre sí.
-
-El costo no es solo tiempo — es invisibilidad sobre dónde conviene comprar qué producto.
-
-**Cazador de Precios** resuelve eso con un pipeline automatizado que:
-- Extrae datos de 6 supermercados vía API
-- Normaliza precios a una unidad base comparable (por 100g / 100ml / por unidad)
-- Clasifica productos automáticamente con ML cuando la tienda no envía categoría
-- Persiste todo en un modelo dimensional (star schema) listo para BI
+La plataforma se apoya en un pipeline ETL automatizado que recopila y normaliza información de múltiples cadenas de supermercados, permitiendo analizar oportunidades de ahorro y simular distintos escenarios de compra.
 
 ---
 
-## Cómo Funciona
+## Funcionalidades Principales
 
-El pipeline sigue cuatro etapas secuenciales:
+### Planificación Inteligente de Compras
+CompraIQ permite identificar los mejores días para realizar compras según los beneficios disponibles del usuario.
+- **Calendario interactivo de promociones:** Mapea de forma visual las fechas de descuento sobre un almanaque mensual.
+- **Visualización de descuentos activos por día:** Muestra de forma inmediata las promos válidas para la fecha seleccionada.
+- **Simulación de compras futuras:** Considera beneficios y reintegros calculados sobre los días de la semana especificados.
+- **Detección de oportunidades de ahorro:** Informa mediante avisos y tips dinámicos sugerencias de pago según la fecha simulada.
 
-```mermaid
-flowchart LR
-    subgraph Extract
-        C[Carrefour\nVTEX API]
-        D[Dia\nVTEX API]
-        CO[Coto\nAPI]
-        J[Jumbo\nVTEX API]
-        DS[Disco\nVTEX API]
-        V[Vea\nVTEX API]
-    end
+### Perfil de Beneficios Personalizado
+Cada usuario puede configurar los medios de pago y programas de beneficios que utiliza habitualmente.
+- **Bancos y tarjetas:** Carga y selección de tarjetas de crédito/débito y bancos emisores.
+- **Billeteras virtuales:** Soporte para Cuenta DNI, MODO, Mercado Pago, BNA+, Personal Pay y Prex.
+- **Programas de fidelización:** Selección rápida de suscripciones como Coto Club, Clarín 365 o Club La Nación.
+- **Aplicación automática:** Integra los descuentos de tu billetero digital directamente sobre los cálculos de tu changuito simulado.
 
-    subgraph Transform
-        VL[Validate\nvalidate.py]
-        PU[Parse Units\nparse_units.py]
-        CL[Classify\nclassify.py]
-    end
+### Changuito de Compra
+Permite construir un changuito virtual y analizar el costo estimado de una compra real.
+- **Lista desde cero:** Comienza con un changuito vacío listo para rellenarse con productos de catálogo o ítems personalizados.
+- **Cálculo de subtotales y total final estimado:** Detalle en tiempo real del precio unitario, unidades seleccionadas, subtotal de cada ítem y total general.
+- **Comparación de alternativas y marcas:** Un modal de alta fidelidad te permite ver las marcas disponibles de un producto ordenadas de menor a mayor precio.
+- **Aplicación automática de descuentos:** Muestra el costo base vs. lo que terminás pagando luego de aplicar tus beneficios guardados.
 
-    subgraph Load
-        RAW[raw_prices]
-        DIM[dim_product\ndim_supermarket\ndim_date]
-        FACT[fact_prices]
-    end
+### Comparación de Escenarios
+La plataforma evalúa distintas estrategias de compra para encontrar la opción más conveniente.
+- **Comparación entre supermercados:** Contrasta los precios finales reales de tu lista completa de compras en Carrefour, Dia, Coto, Jumbo, Disco y Vea.
+- **Evaluación de beneficios combinados:** Suma descuentos cruzados de diferentes programas autorizados.
+- **Estimación del costo final efectivo:** Deduce los topes de reintegro de manera exacta para mostrar el valor de caja neto.
 
-    C & D & CO & J & DS & V --> VL
-    VL --> PU --> CL
-    CL --> RAW
-    RAW --> DIM --> FACT
-```
-
-### Estrategia de extracción
-
-Cada supermercado tiene su propio extractor. La extracción es 100% directa por API.
-
-| Supermercado | Fuente primaria |
-|---|---|
-| Carrefour | VTEX API (`/catalog_system/pub/products/search`) |
-| Dia | VTEX API |
-| Jumbo | VTEX API (`vtex_base`) |
-| Disco | VTEX API (`vtex_base`) |
-| Vea | VTEX API (`vtex_base`) |
-| Coto | API propia |
-
-Los cinco supermercados VTEX usan una base común (`vtex_base.py`) que maneja paginación y parseo de ítems.
+### Optimización Multi-Supermercado
+CompraIQ puede sugerir cómo distribuir una compra entre diferentes comercios o fechas para aprovechar al máximo los beneficios disponibles.
+- **Aprovechamiento de topes de reintegro:** Evita exceder límites de reintegros derivando productos adicionales a otros medios o supermercados.
+- **División estratégica de compras:** Divide el changuito en múltiples viajes de forma automática maximizando el ahorro de bolsillo global.
+- **Recomendaciones inteligentes:** Banners dinámicos que sugieren dónde y cómo abonar según la composición actual del changuito.
 
 ---
 
-## Arquitectura
+## Documentación Técnica y Desarrollo
 
-### Modelo de datos (Star Schema)
+Toda la documentación sobre la estructura del proyecto, guías de instalación, inicio rápido local, diagramas de base de datos y algoritmos está unificada en el apartado técnico:
 
-```mermaid
-erDiagram
-    dim_ingestion {
-        int ingestion_key PK
-        varchar batch_id
-        timestamp load_timestamp
-        varchar source_user
-    }
-    raw_prices {
-        int id PK
-        int ingestion_key FK
-        varchar ean
-        text producto
-        text precio
-        text presentacion
-        text supermercado
-        varchar fuente
-        text promociones
-        timestamp fecha
-    }
-    dim_product {
-        int product_id PK
-        varchar ean
-        varchar nombre
-        varchar categoria
-        decimal unit_quantity
-        varchar unit_type
-        smallint unit_multiplier
-        decimal base_quantity
-        varchar presentacion_raw
-    }
-    dim_supermarket {
-        int supermarket_id PK
-        varchar nombre
-        varchar pais
-    }
-    dim_date {
-        int date_id PK
-        date fecha
-        smallint anio
-        tinyint mes
-        tinyint dia
-        varchar dia_semana
-        boolean es_finde
-    }
-    dim_source {
-        int source_id PK
-        varchar nombre
-    }
-    fact_prices {
-        int fact_id PK
-        int ingestion_key FK
-        int product_id FK
-        int supermarket_id FK
-        int date_id FK
-        int source_id FK
-        decimal price
-        decimal price_per_unit
-        varchar unit_label
-        int raw_id FK
-    }
-
-    dim_ingestion ||--o{ raw_prices : "tiene"
-    dim_ingestion ||--o{ fact_prices : "agrupa"
-    dim_product ||--o{ fact_prices : "describe"
-    dim_supermarket ||--o{ fact_prices : "proviene de"
-    dim_date ||--o{ fact_prices : "fecha"
-    dim_source ||--o{ fact_prices : "fuente"
-    raw_prices ||--o{ fact_prices : "trazabilidad"
-```
-
-### Flujo de ejecución del pipeline
-
-```mermaid
-sequenceDiagram
-    participant N8N as Scheduler / N8N
-    participant Main as main.py
-    participant Extract as Extractores
-    participant Validate as validate.py
-    participant DB as MySQL
-
-    N8N->>Main: Ejecutar pipeline
-    Main->>DB: INSERT dim_ingestion (batch_id)
-    DB-->>Main: ingestion_key
-
-    Main->>Extract: extract_carrefour() ... extract_vea()
-    Extract-->>Main: raw_data[]
-
-    Main->>Validate: validate(raw_data)
-    Validate-->>Main: valid[], rejected[]
-
-    Main->>DB: INSERT raw_prices (valid_data, ingestion_key)
-    DB-->>Main: raw_ids[]
-
-    Main->>DB: insert_dimensional()
-    Note over DB: _upsert_product → predict_category si categoria vacía
-    Note over DB: parse_presentation → normaliza unidad
-    DB-->>Main: ✅ dim_product / fact_prices actualizados
-
-    Main->>N8N: JSON PIPELINE_RESULT
-```
-
----
-
-## Clasificación de Categorías (ML)
-
-Los supermercados envían categorías inconsistentes o vacías. El clasificador resuelve eso automáticamente durante la carga.
-
-### Cómo funciona
-
-- **`transform/classify.py`**: expone `predict_category(nombre) → str`. Carga el modelo entrenado una sola vez (lazy load). Si no existe el `.pkl`, cae al fallback de reglas por keywords.
-- **`load/load_db.py`**: en `_upsert_product`, si `categoria` está vacía o es `None`, llama a `predict_category(nombre)` antes de insertar.
-
-### Arquitectura del clasificador
-
-```mermaid
-flowchart TD
-    A[nombre del producto] --> B{¿model.pkl existe?}
-    B -- Sí --> C[TF-IDF Vectorizer\nngram_range 1-2]
-    C --> D[Logistic Regression]
-    D --> E[categoría predicha]
-    B -- No --> F[Fallback: keyword matching\nreglas estáticas por categoría]
-    F --> E
-```
-
-### Categorías objetivo
-
-| Categoría | Ejemplos de keywords |
-|---|---|
-| Lácteos | leche, yogur, queso, manteca, serenísima |
-| Básicos de Almacén | arroz, fideos, aceite, sal, harina, polenta |
-| Bebidas con Alcohol | cerveza, vino, fernet, gin, whisky, sidra |
-| Bebidas sin Alcohol | gaseosa, agua, jugo, coca, pepsi, sprite |
-| Frutas y Verduras | papa, cebolla, tomate, manzana, banana |
-| Carnicería y Pescadería | carne, pollo, hamburguesa, milanesa, merluza |
-| Panadería y Galletitas | pan, galletitas, alfajor, lactal, chocolinas |
-| Cuidado Personal | shampoo, desodorante, pañales, colgate, dove |
-| Limpieza del Hogar | detergente, lavandina, desinfectante, skip |
-| Congelados y Otros | helado, nuggets, papas congeladas |
-
-### Entrenar el modelo manualmente
-
-```bash
-# Requiere que el contenedor de MySQL esté corriendo
-uv run python train_model.py
-```
-
-Esto conecta a la base, hace bootstrap de labels con las reglas de keywords, entrena el pipeline `TF-IDF + LogisticRegression` y guarda el modelo en `model/category_model.pkl`. Se recomienda re-entrenar cuando haya un volumen significativo de nuevos productos.
-
----
-
-## Normalización de Unidades
-
-El módulo `transform/parse_units.py` parsea el texto crudo de presentación y lo convierte a una unidad base para comparación justa entre productos de distinto tamaño.
-
-**Formatos soportados:**
-
-| Texto original | `unit_quantity` | `unit_type` | `base_quantity` | `unit_label` |
-|---|---|---|---|---|
-| `500 g` | 500 | g | 500 | por 100g |
-| `1.5 L` | 1.5 | l | 1500 | por 100ml |
-| `6 x 300 ml` | 300 | ml | 1800 | por 100ml |
-| `1 kg` | 1 | kg | 1000 | por 100g |
-| `Un` | 1 | un | 1 | por unidad |
-
-El campo `price_per_unit` en `fact_prices` permite comparar el precio real por 100g o 100ml independientemente del tamaño del envase.
-
-## Inicio Rápido
-
-El proyecto está diseñado con una separación clara de responsabilidades:
-1. **Infraestructura (Docker):** Administra la base de datos MySQL y la UI de administración.
-2. **Entorno de desarrollo local (uv):** Maneja el entorno virtual y la ejecución de los scripts de Python.
-3. **Calidad del código (Ruff + pyproject.toml):** Valida el estilo y buenas prácticas localmente.
-
-### 1. Configurar variables de entorno
-
-```bash
-cp .env.example .env
-# Completar con credenciales de la base de datos
-```
-
-Variables requeridas en `.env`:
-```
-MYSQL_ROOT_PASSWORD=...
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=...
-DB_NAME=prices
-```
-
-### 2. Levantar la base de datos (Docker)
-
-La base de datos MySQL debe estar corriendo para poder ejecutar el pipeline o el script de entrenamiento:
-
-```bash
-docker compose up mysql phpmyadmin -d
-```
-
-El schema se inicializa automáticamente desde `db/schema.sql` en el primer arranque. phpMyAdmin queda disponible en `http://localhost:8080`.
-
-### 3. Sincronizar dependencias locales (uv)
-
-Para ejecutar scripts localmente en tu máquina, inicializa el entorno virtual administrado por `uv`:
-
-```bash
-# Inicializar entorno virtual e instalar dependencias locales automáticamente
-uv sync
-```
-
-### 4. Ejecutar el pipeline
-
-**Modo manual (Local con uv - Recomendado para desarrollo):**
-```bash
-uv run python main.py
-```
-
-**Modo automatizado (Docker + cron scheduler):**
-```bash
-docker compose --profile cron up
-```
-
-### 5. Entrenar el clasificador ML (Manual con uv)
-
-Una vez que tengas datos en tu base de datos local, puedes entrenar el modelo:
-```bash
-uv run python train_model.py
-```
-
-### 6. Backfill de EAN (Manual con uv)
-
-Si hay productos en la base sin EAN que ya tienen un gemelo con EAN cargado después:
-```bash
-uv run python backfill_ean.py
-```
-
----
-
-## Calidad de Código & Linting
-
-Usamos **Ruff** configurado en el archivo `pyproject.toml` para mantener el código limpio y estandarizado de acuerdo a buenas prácticas de la industria.
-
-### Chequear linting:
-```bash
-uv run ruff check .
-```
-
-### Autoformatear código:
-```bash
-uv run ruff format .
-```
-
----
-
-## Scripts de Utilidad
-
-| Script | Descripción |
-|---|---|
-| `train_model.py` | Entrena el clasificador ML desde los registros actuales de `dim_product` |
-| `backfill_ean.py` | Propaga EAN a registros históricos que comparten nombre con un producto ya identificado |
-
----
-
-## Stack Tecnológico
-
-| Capa | Tecnología |
-|---|---|
-| Extracción | `requests` (API VTEX y API propia) |
-| Transformación | Python puro + `re` para parseo de unidades |
-| Clasificación | `scikit-learn` (TF-IDF + Logistic Regression) |
-| Base de datos | MySQL 8 (Docker) |
-| Calidad | Ruff + `pyproject.toml` |
-| Gestión de Entorno | uv (Astral) |
-| Orquestación | Docker Compose + N8N (scheduler externo) |
-| UI de base | phpMyAdmin |
-
----
-
-## Estructura del Proyecto
-
-```
-supermercado/
-├── backend/
-│   ├── extract/
-│   │   ├── vtex_base.py        # Extractor genérico para supermercados VTEX
-│   │   ├── carrefour.py        # Extractor Carrefour (API VTEX)
-│   │   ├── dia.py              # Extractor Dia
-│   │   ├── coto.py             # Extractor Coto
-│   │   ├── jumbo.py            # Extractor Jumbo
-│   │   ├── disco.py            # Extractor Disco
-│   │   └── vea.py              # Extractor Vea
-│   ├── transform/
-│   │   ├── classify.py         # Clasificador ML de categorías
-│   │   ├── parse_units.py      # Parser y normalizador de unidades
-│   │   ├── validate.py         # Validación y deduplicación del lote
-│   │   └── clean_data.py       # Limpieza auxiliar
-│   ├── load/
-│   │   └── load_db.py          # Upsert dimensional + inserción en fact_prices
-│   ├── db/
-│   │   └── schema.sql          # DDL del star schema
-│   ├── model/
-│   │   └── category_model.pkl  # Modelo ML entrenado (generado por train_model.py)
-│   ├── tests/                  # Pruebas automatizadas del pipeline
-│   ├── main.py                 # Punto de entrada del pipeline
-│   ├── train_model.py          # Script de entrenamiento del clasificador
-│   ├── backfill_ean.py         # Utilidad de backfill de EAN
-│   ├── Dockerfile
-│   ├── pyproject.toml          # Configuración de Ruff
-│   └── requirements.txt
-├── frontend/
-│   ├── index.html              # Interfaz de usuario del dashboard
-│   ├── style.css               # Estilos de la UI (Glassmorphic design)
-│   └── app.js                  # Lógica interactiva y simulador
-├── docker-compose.yml
-└── README.md
-```
-
-
----
-
-## Proveniencia de los Datos
-
-Los datos se obtienen directamente desde las APIs públicas de cada supermercado.
-
-| Fuente | Método | URL base |
-|---|---|---|
-| Carrefour | VTEX API | `carrefour.com.ar` |
-| Dia | VTEX API | `diaonline.supermercadosdia.com.ar` |
-| Jumbo | VTEX API | `jumbo.com.ar` |
-| Disco | VTEX API | `disco.com.ar` |
-| Vea | VTEX API | `vea.com.ar` |
-| Coto | API propia | `cotodigital3.com.ar` |
-
-Los datos extraídos son de carácter público (precios y nombres de productos visibles a cualquier visitante del sitio). No se almacena información personal de ningún tipo. El pipeline solo registra nombre del producto, precio, presentación, supermercado y fecha de extracción.
+👉 [**apartado_tecnico.md**](file:///c:/Users/agos/Downloads/supermercado/apartado_tecnico.md)
