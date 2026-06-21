@@ -49,4 +49,4 @@ CompraIQ puede sugerir cómo distribuir una compra entre diferentes comercios o 
 
 Toda la documentación sobre la estructura del proyecto, guías de instalación, inicio rápido local, diagramas de base de datos y algoritmos está unificada en el apartado técnico:
 
-👉 [**apartado_tecnico.md**](file:///c:/Users/agos/Downloads/supermercado/apartado_tecnico.md)
+👉 [**apartado_tecnico.md**](https://github.com/DataTalesByAgos/CompraIQ/blob/main/apartado_tecnico.md)
