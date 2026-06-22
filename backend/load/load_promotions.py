@@ -13,7 +13,7 @@ def get_db_connection():
     host = os.getenv("DB_HOST", "localhost")
     user = os.getenv("DB_USER", "root")
     password = os.getenv("DB_PASSWORD", "")
-    database = os.getenv("DB_NAME", "supermercado")
+    database = os.getenv("DB_NAME", "prices")
     
     return mysql.connector.connect(
         host=host,
@@ -67,9 +67,8 @@ def run_promotions_pipeline():
     """
     cursor.execute(create_table_query)
     
-    # Eliminar las promociones antiguas de la DB para refrescar las vigentes
-    # Esto asegura que no queden promociones obsoletas
-    cursor.execute("TRUNCATE TABLE promotions")
+    # Eliminar únicamente las promociones que ya expiraron en lugar de vaciar la tabla por completo
+    cursor.execute("DELETE FROM promotions WHERE fecha_fin < CURRENT_DATE()")
     
     insert_query = """
     INSERT INTO promotions (

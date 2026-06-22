@@ -2,19 +2,22 @@
 
 :root {
   --bg-primary: #ffffff;
-  --bg-secondary: #faf9f6; /* warm warm paper color */
-  --border-color: #e5e5e0; /* elegant subtle border */
+  --bg-secondary: #faf9f6;
+  /* warm warm paper color */
+  --border-color: #e5e5e0;
+  /* elegant subtle border */
   --text-primary: #111111;
   --text-secondary: #666666;
   --text-tertiary: #999999;
-  
+
   /* Single Elegant Accent */
-  --accent: #002FA7; /* Cobalt Blue */
+  --accent: #002FA7;
+  /* Cobalt Blue */
   --accent-light: #f0f4ff;
-  
+
   --font-serif: 'Lora', Georgia, serif;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  
+
   --transition-clean: all 0.2s ease;
 }
 
@@ -35,7 +38,8 @@ body {
 
 /* Page Wrapper - Editorial Column */
 .app-layout {
-  max-width: 480px; /* Mobile first focus */
+  max-width: 480px;
+  /* Mobile first focus */
   margin: 0 auto;
   background-color: var(--bg-primary);
   min-height: 100vh;
@@ -47,7 +51,10 @@ body {
 }
 
 /* Headers & Editorial Typography */
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--font-serif);
   font-weight: 600;
   color: var(--text-primary);
@@ -328,7 +335,7 @@ p {
 .promo-card-visual:hover {
   border-color: var(--text-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .promo-card-visual.selected {
@@ -516,9 +523,17 @@ p {
   border-radius: 50%;
 }
 
-.calendar-dot.bank { background-color: var(--accent); }
-.calendar-dot.super { background-color: #eab308; }
-.calendar-dot.combo { background-color: var(--accent); }
+.calendar-dot.bank {
+  background-color: var(--accent);
+}
+
+.calendar-dot.super {
+  background-color: #eab308;
+}
+
+.calendar-dot.combo {
+  background-color: var(--accent);
+}
 
 /* Suggestion Card */
 .combo-banner {
@@ -739,8 +754,15 @@ p {
 
 /* Fade in Animation */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Button & Link styles */
@@ -787,7 +809,8 @@ p {
 }
 
 .btn-danger-text {
-  color: #b91c1c; /* Crimson / Dark Red */
+  color: #b91c1c;
+  /* Crimson / Dark Red */
   text-decoration-color: #fca5a5;
 }
 
@@ -932,7 +955,389 @@ p {
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
+
+
+/* ==========================================
+   REDiseño de BENEFICIOS (Financial & Column View)
+   ========================================== */
+
+/* Responsive Expansion for App Layout */
+@media (min-width: 768px) {
+  .app-layout {
+    max-width: 940px !important;
+  }
+}
+
+/* Day Selector Header Bar */
+.days-selector-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background-color: var(--bg-secondary);
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.day-selector-btn {
+  flex: 1;
+  text-align: center;
+  padding: 0.6rem 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-clean);
+  text-transform: uppercase;
+}
+
+.day-selector-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.day-selector-btn.active {
+  background-color: var(--bg-primary);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Scrollable Column container */
+.benefits-columns-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1.5rem;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Base day column styling */
+.redesigned-week-day-column {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  min-height: 450px;
+  transition: var(--transition-clean);
+  padding: 1.25rem;
+  flex-shrink: 0;
+  width: 100%;
+  /* Default mobile view is full width of container */
+}
+
+/* Individual Day subtle differentiation */
+.redesigned-week-day-column.day-lunes {
+  background-color: #f4f8fc;
+  border-color: #dbe6f2;
+}
+
+.redesigned-week-day-column.day-martes {
+  background-color: #f5fbf3;
+  border-color: #dcedd6;
+}
+
+.redesigned-week-day-column.day-miercoles {
+  background-color: #fff6f7;
+  border-color: #fadce0;
+}
+
+.redesigned-week-day-column.day-jueves {
+  background-color: #fdf7f2;
+  border-color: #f5e4d5;
+}
+
+.redesigned-week-day-column.day-viernes {
+  background-color: #f7f6fc;
+  border-color: #e5e2f5;
+}
+
+/* Column Header */
+.column-day-title {
+  font-size: 1.1rem;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding-bottom: 0.5rem;
+}
+
+.column-day-subtitle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: none;
+}
+
+/* Column Promos container */
+.column-promos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex-grow: 1;
+}
+
+/* Financial Cards (Redesigned) */
+.visual-day-promo-card-redesigned {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-clean);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+  text-align: center;
+}
+
+.visual-day-promo-card-redesigned:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+  border-color: var(--text-primary);
+}
+
+.visual-day-promo-card-redesigned.selected {
+  border-color: var(--accent);
+  background-color: var(--accent-light);
+  box-shadow: 0 0 0 1px var(--accent), 0 8px 20px rgba(0, 47, 167, 0.08);
+}
+
+/* Selected check for redesigned cards */
+.redesigned-check-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.redesigned-check-indicator.active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* Supermarket Logo rendering */
+.card-super-logo {
+  height: 48px;
+  width: auto;
+  max-width: 130px;
+  object-fit: contain;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-super-logo img {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.card-super-text-logo {
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+}
+
+/* Dia specific CSS Logo */
+.dia-logo-placeholder {
+  background-color: #e30613;
+  color: #ffffff !important;
+  font-weight: 900;
+  font-size: 1.3rem;
+  padding: 0.2rem 0.8rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.05em;
+  font-family: 'Inter', sans-serif;
+  height: 34px;
+  box-shadow: 0 3px 6px rgba(227, 6, 19, 0.25);
+}
+
+/* Prominent Discount Value */
+.card-discount-val {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+  font-family: var(--font-sans);
+  margin: 0.25rem 0;
+  letter-spacing: -0.04em;
+}
+
+/* Bank and Payment Method Secondary Info */
+.card-bank-info {
+  margin-top: 0.5rem;
+  border-top: 1px dashed var(--border-color);
+  padding-top: 0.75rem;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.card-bank-info .bank-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.card-bank-info .card-name {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* Best Opportunity badge */
+.best-opportunity-badge {
+  background: linear-gradient(135deg, #ff453a, #ff9f0a);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 8px rgba(255, 69, 58, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+
+/* Mobile vs Desktop Columns Display logic */
+@media (max-width: 767px) {
+
+  /* In mobile, only display the active day column */
+  .redesigned-week-day-column {
+    display: none !important;
+  }
+
+  .redesigned-week-day-column.active-column {
+    display: flex !important;
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 768px) {
+
+  /* In desktop, force columns side-by-side with fixed 250px width, showing only those active in carousel */
+  .redesigned-week-day-column {
+    display: none !important;
+  }
+
+  .redesigned-week-day-column.visible-in-carousel {
+    display: flex !important;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* Carousel nav header: row with prev arrow | spacer | next arrow, above the columns */
+.carousel-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.carousel-day-labels {
+  display: flex;
+  flex: 1;
+  justify-content: space-around;
+  gap: 1rem;
+  padding: 0;
+}
+
+.carousel-day-label-item {
+  flex: 1;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+/* Arrow buttons */
+.carousel-arrow {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  font-weight: bold;
+  transition: var(--transition-clean);
+  flex-shrink: 0;
+}
+
+.carousel-arrow:hover:not(:disabled) {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Hidden arrow still takes up space so layout doesn't jump */
+.carousel-arrow.arrow-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hide scrollbar for columns scroll */
+@media (min-width: 768px) {
+  .benefits-columns-scroll {
+    overflow-x: hidden !important;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 1rem;
+  }
+}
