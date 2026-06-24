@@ -7,6 +7,7 @@ from extract.dia_promo_scraper import scrape_dia_promotions
 from extract.coto_promo_scraper import scrape_coto_promotions
 from extract.modo_promo_scraper import scrape_modo_promotions
 from extract.cencosud_carrefour_promo_scraper import scrape_cencosud_carrefour_promotions
+from extract.cuenta_dni_promo_scraper import scrape_cuenta_dni_promotions
 
 def get_db_connection():
     # Leer variables de entorno (al igual que la parte de carga de precios)
@@ -30,6 +31,7 @@ def run_promotions_pipeline():
     # 1. Obtener todas las promos reales
     all_promos = []
     
+    all_promos.extend(scrape_cuenta_dni_promotions())
     all_promos.extend(scrape_dia_promotions())
     all_promos.extend(scrape_coto_promotions())
     all_promos.extend(scrape_modo_promotions())
@@ -54,6 +56,8 @@ def run_promotions_pipeline():
         beneficio             VARCHAR(150) NOT NULL,
         tipo_beneficio        VARCHAR(50) NOT NULL,
         tipo_descuento        VARCHAR(50) NOT NULL DEFAULT 'porcentaje',
+        alcance               VARCHAR(20) DEFAULT 'general',
+        acumulable            BOOLEAN DEFAULT FALSE,
         valor                 DECIMAL(10,2) NOT NULL,
         dia_semana            VARCHAR(15) NOT NULL,
         tope_descuento_pesos  DECIMAL(15,2) NULL,
@@ -73,12 +77,14 @@ def run_promotions_pipeline():
     insert_query = """
     INSERT INTO promotions (
         id, supermercado, beneficio, tipo_beneficio, tipo_descuento,
-        valor, dia_semana, tope_descuento_pesos, categorias_aplicables,
-        fecha_inicio, fecha_fin, url_fuente
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        alcance, acumulable, valor, dia_semana, tope_descuento_pesos,
+        categorias_aplicables, fecha_inicio, fecha_fin, url_fuente
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
         valor = VALUES(valor),
         tope_descuento_pesos = VALUES(tope_descuento_pesos),
+        alcance = VALUES(alcance),
+        acumulable = VALUES(acumulable),
         fecha_fin = VALUES(fecha_fin),
         actualizado_el = CURRENT_TIMESTAMP;
     """
@@ -92,6 +98,8 @@ def run_promotions_pipeline():
                 p["beneficio"],
                 p["tipo_beneficio"],
                 p["tipo_descuento"],
+                p.get("alcance", "general"),
+                p.get("acumulable", False),
                 p["valor"],
                 p["dia_semana"],
                 p["tope_descuento_pesos"],

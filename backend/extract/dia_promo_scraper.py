@@ -4,6 +4,12 @@ import hashlib
 import json
 from datetime import datetime
 
+def _end_of_month() -> str:
+    today = datetime.now()
+    if today.month == 12:
+        return today.replace(day=31).strftime("%Y-%m-%d")
+    return today.replace(month=today.month + 1, day=1).strftime("%Y-%m-%d")
+
 def scrape_dia_promotions() -> list[dict]:
     url = "https://diaonline.supermercadosdia.com.ar/medios-de-pago-y-promociones#payment-cards"
     headers = {
@@ -95,12 +101,14 @@ def scrape_dia_promotions() -> list[dict]:
                     "beneficio": beneficio,
                     "tipo_beneficio": tipo_beneficio,
                     "tipo_descuento": "porcentaje",
+                    "alcance": "general",
+                    "acumulable": tipo_beneficio in ("club", "prensa"),
                     "valor": valor,
                     "dia_semana": dia,
                     "tope_descuento_pesos": tope or 1500.0,
                     "categorias_aplicables": "all",
                     "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-                    "fecha_fin": "2026-12-31",
+                    "fecha_fin": _end_of_month(),
                     "url_fuente": url
                 })
                 
@@ -135,12 +143,14 @@ def _fallback_dia_promos() -> list[dict]:
             "beneficio": p["beneficio"],
             "tipo_beneficio": p["tipo_beneficio"],
             "tipo_descuento": "porcentaje",
+            "alcance": "general",
+            "acumulable": p["tipo_beneficio"] in ("club", "prensa"),
             "valor": p["valor"],
             "dia_semana": p["dia"],
             "tope_descuento_pesos": p["tope"],
             "categorias_aplicables": "all",
             "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-            "fecha_fin": "2026-12-31",
+            "fecha_fin": _end_of_month(),
             "url_fuente": url
         })
     return results

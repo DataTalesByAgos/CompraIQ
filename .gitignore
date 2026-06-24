@@ -23,4 +23,7 @@ backend/data/
 backend/*.csv
 backend/.env
 backend/scratch/
-backend/.pytest_cache/
+backend/.pytest_cache/
+
+# Session memory
+memory.md

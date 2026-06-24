@@ -24,12 +24,14 @@ _PRICE_RE = re.compile(r"[\d.,]+")
 def _parse_price_safe(raw: str) -> Optional[float]:
     """Intenta convertir el string de precio a float. Retorna None si falla."""
     try:
-        cleaned = (
-            raw.replace("$", "")
-               .replace(".", "")
-               .replace(",", ".")
-               .strip()
-        )
+        # Primero intentar float() directo (formato "189691.6")
+        val = float(raw.strip().replace("$", ""))
+        return val if val > 0 else None
+    except ValueError:
+        pass
+    try:
+        # Fallback: formato argentino "$1.599,00" → 1599.00
+        cleaned = raw.replace("$", "").replace(".", "").replace(",", ".").strip()
         val = float(cleaned)
         return val if val > 0 else None
     except (ValueError, AttributeError):
@@ -56,7 +58,7 @@ def validate(data: list[dict]) -> tuple[list[dict], list[dict]]:
             continue
             
         # 4. Limpieza de strings
-        producto_limpio = row["producto"].strip().title()
+        producto_limpio = re.sub(r'\s+', ' ', row["producto"].strip()).title()
         super_limpio = row["supermercado"].strip().title()
         
         # Limpiar categoría si existe
@@ -103,8 +105,17 @@ def _check(row: dict) -> Optional[str]:
     if not precio_raw:
         return "precio vacío"
 
-    if _parse_price_safe(precio_raw) is None:
+    precio_parsed = _parse_price_safe(precio_raw)
+    if precio_parsed is None:
         return f"precio no parseable o <= 0: {precio_raw!r}"
+
+    # 4. Sanity: verduras/frutas frescas no deberían costar > $50.000
+    if precio_parsed > 50000:
+        prod_lower = producto.lower()
+        if any(kw in prod_lower for kw in ["cebolla", "papa", "zanahoria", "tomate", "lechuga",
+                                             "acelga", "espinaca", "zapallo", "berenjena", "zucchini",
+                                             "morron", "repollo", "brocoli", "coliflor"]):
+            return f"precio sospechoso para producto fresco: {precio_parsed}"
 
     return None  # válido
 

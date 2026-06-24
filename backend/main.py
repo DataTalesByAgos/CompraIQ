@@ -7,6 +7,8 @@ from extract.coto import extract_coto
 from extract.jumbo import extract_jumbo
 from extract.disco import extract_disco
 from extract.vea import extract_vea
+from extract.toledo import extract_toledo
+from extract.cordiez import extract_cordiez
 from transform.validate import validate, log_rejected
 from load.load_db import insert_raw, insert_dimensional
 
@@ -36,8 +38,10 @@ def run_pipeline():
     raw_jumbo = extract_jumbo() or []
     raw_disco = extract_disco() or []
     raw_vea = extract_vea() or []
+    raw_toledo = extract_toledo() or []
+    raw_cordiez = extract_cordiez() or []
     
-    raw_data = raw_carrefour + raw_dia + raw_coto + raw_jumbo + raw_disco + raw_vea
+    raw_data = raw_carrefour + raw_dia + raw_coto + raw_jumbo + raw_disco + raw_vea + raw_toledo + raw_cordiez
     
     if not raw_data:
         print("      ⚠  Fallo la extracción en todas las fuentes. Abortando.")

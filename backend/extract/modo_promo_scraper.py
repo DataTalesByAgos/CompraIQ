@@ -71,6 +71,8 @@ def scrape_modo_promotions() -> list[dict]:
                     "beneficio": "MODO",
                     "tipo_beneficio": "billetera",
                     "tipo_descuento": "porcentaje",
+                    "alcance": "general",
+                    "acumulable": False,
                     "valor": valor,
                     "dia_semana": dia,
                     "tope_descuento_pesos": tope or 2000.0,
@@ -92,33 +94,44 @@ def scrape_modo_promotions() -> list[dict]:
 
 def _fallback_modo_promos() -> list[dict]:
     print("  ℹ [Scraper MODO] Using verified active promotion channels for MODO...")
-    # Cargar convenios reales recurrentes de MODO en supermercados
-    promos = [
-        {"supermercado": "Jumbo", "valor": 15.0, "dia": "sábado", "tope": 1500.0},
-        {"supermercado": "Disco", "valor": 15.0, "dia": "sábado", "tope": 1500.0},
-        {"supermercado": "Vea", "valor": 15.0, "dia": "sábado", "tope": 1500.0},
-        {"supermercado": "Carrefour", "valor": 20.0, "dia": "miércoles", "tope": 2000.0},
-        {"supermercado": "Dia", "valor": 20.0, "dia": "miércoles", "tope": 2000.0}
+    today = datetime.now()
+    if today.month == 12:
+        end_of_month = today.replace(day=31)
+    else:
+        end_of_month = today.replace(month=today.month + 1, day=1)
+
+    patterns = [
+        ("Jumbo", 15.0, ["sábado", "domingo"], 1500.0),
+        ("Disco", 15.0, ["sábado", "domingo"], 1500.0),
+        ("Vea",   15.0, ["sábado", "domingo"], 1500.0),
+        ("Carrefour", 20.0, ["miércoles", "jueves"], 2000.0),
+        ("Dia", 20.0, ["miércoles", "jueves"], 2000.0),
+        ("Coto", 20.0, ["miércoles"], 2000.0),
+        ("Toledo", 20.0, ["jueves"], 2000.0),
+        ("Cordiez", 20.0, ["jueves"], 2000.0),
     ]
-    
+
     results = []
     url = "https://www.modo.com.ar/promos"
-    for p in promos:
-        promo_id = hashlib.sha256(f"MODO_{p['supermercado']}_{p['dia']}_{p['valor']}".encode()).hexdigest()[:16]
-        results.append({
-            "id": promo_id,
-            "supermercado": p["supermercado"],
-            "beneficio": "MODO",
-            "tipo_beneficio": "billetera",
-            "tipo_descuento": "porcentaje",
-            "valor": p["valor"],
-            "dia_semana": p["dia"],
-            "tope_descuento_pesos": p["tope"],
-            "categorias_aplicables": "all",
-            "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-            "fecha_fin": "2026-12-31",
-            "url_fuente": url
-        })
+    for store, valor, days, tope in patterns:
+        for day in days:
+            promo_id = hashlib.sha256(f"MODO_{store}_{day}_{valor}".encode()).hexdigest()[:16]
+            results.append({
+                "id": promo_id,
+                "supermercado": store,
+                "beneficio": "MODO",
+                "tipo_beneficio": "billetera",
+                "tipo_descuento": "porcentaje",
+                "alcance": "general",
+                "acumulable": False,
+                "valor": valor,
+                "dia_semana": day,
+                "tope_descuento_pesos": tope,
+                "categorias_aplicables": "all",
+                "fecha_inicio": today.strftime("%Y-%m-%d"),
+                "fecha_fin": end_of_month.strftime("%Y-%m-%d"),
+                "url_fuente": url,
+            })
     return results
 
 if __name__ == "__main__":

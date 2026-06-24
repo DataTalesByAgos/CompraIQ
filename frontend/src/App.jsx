@@ -179,7 +179,22 @@ export default function App() {
 
   const [selectedBenefits, setSelectedBenefits] = useState(() => {
     const saved = localStorage.getItem('compraiq_benefits');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      // Migrate old format: { benefit: {...}, supermercado: '...' } → flat entries
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].benefit) {
+        localStorage.removeItem('compraiq_benefits');
+        return [];
+      }
+      // Only keep items that have the flat-entry shape
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id && parsed[0].supermercado) {
+        return parsed;
+      }
+      return [];
+    } catch {
+      return [];
+    }
   });
 
   const [cart, setCart] = useState([]);
@@ -190,18 +205,36 @@ export default function App() {
   const [carouselStartIdx, setCarouselStartIdx] = useState(0);
   const [showAllStores, setShowAllStores] = useState(false);
 
+  const [benefitFilter, setBenefitFilter] = useState(null); // null = todos
   const [popularProducts, setPopularProducts] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef(null);
+  const [supermarketsList, setSupermarketsList] = useState([]);
+  const [categoriesList, setCategoriesList] = useState([]);
+  const [searchStore, setSearchStore] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState(null);
 
-  // Derived: the store linked to the first selected benefit
+  // Derived: the store linked to the first selected benefit (entries now have .supermercado directly)
   const targetStore = (
     selectedBenefits.length > 0 &&
-    selectedBenefits[0].entries &&
-    selectedBenefits[0].entries[0]?.supermercado
+    selectedBenefits[0].supermercado
   ) || 'Carrefour';
+
+  // Filtered benefits for carousel
+  const filteredBenefits = useMemo(() => {
+    if (!benefitFilter) return dynamicPromotions;
+    const result = { bancos: [], tarjetas: [], billeteras: [], clubes: [] };
+    Object.keys(dynamicPromotions).forEach(cat => {
+      dynamicPromotions[cat].forEach(benefit => {
+        if (benefit.name === benefitFilter) {
+          result[cat].push(benefit);
+        }
+      });
+    });
+    return result;
+  }, [dynamicPromotions, benefitFilter]);
 
   // Load popular products when targetStore changes
   React.useEffect(() => {
@@ -259,34 +292,79 @@ export default function App() {
       .catch(err => console.error('Error fetching promotions from backend:', err));
   }, []);
 
-  // Persist selected benefits – benefit here is the grouped card object
-  const handleToggleBenefit = (benefit) => {
-    let updated;
-    const isAlreadySelected = selectedBenefits.some(b => b.id === benefit.id);
+  // Sync searchStore with targetStore when targetStore changes
+  React.useEffect(() => {
+    setSearchStore(targetStore);
+  }, [targetStore]);
 
-    if (isAlreadySelected) {
-      updated = selectedBenefits.filter(b => b.id !== benefit.id);
-    } else {
-      // Find what days this benefit is active for
-      const activeDays = benefit.entries.map(e => e.day.toLowerCase());
+  // Load supermarkets list
+  React.useEffect(() => {
+    fetch('http://localhost:5000/api/supermarkets')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setSupermarketsList(data); })
+      .catch(() => {});
+  }, []);
 
-      // If the benefit has entries matching the currently selected simulated day, allow selection.
-      // Otherwise, switch the selectedDaySimulated to this benefit's first active day and reset other benefits
-      // because we only simulate a single day's cart trip.
-      const matchesCurrentDay = activeDays.includes(selectedDaySimulated.toLowerCase());
+  // Load categories list
+  React.useEffect(() => {
+    fetch('http://localhost:5000/api/categories')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setCategoriesList(data); })
+      .catch(() => {});
+  }, []);
 
-      if (matchesCurrentDay) {
-        updated = [...selectedBenefits, benefit];
-      } else {
-        // Switch day to the first day of this benefit, clearing other non-matching benefits
-        const newDay = activeDays[0];
-        setSelectedDaySimulated(newDay);
-        updated = [benefit];
+  const DAYS_ORDER = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+  const handleFilterClick = (name) => {
+    const newFilter = benefitFilter === name ? null : name;
+    setBenefitFilter(newFilter);
+    setSelectedBenefits([]);
+    // Move carousel to first day of the filtered benefit
+    if (newFilter) {
+      for (const cat of Object.values(dynamicPromotions)) {
+        for (const benefit of cat) {
+          if (benefit.name === newFilter && benefit.entries.length > 0) {
+            const day = benefit.entries[0].day.toLowerCase();
+            const dayIdx = DAYS_ORDER.indexOf(day);
+            if (dayIdx !== -1) {
+              setCarouselStartIdx(Math.max(0, Math.min(4, dayIdx - 1)));
+            }
+            break;
+          }
+        }
       }
     }
-    setSelectedBenefits(updated);
-    localStorage.setItem('compraiq_benefits', JSON.stringify(updated));
   };
+
+  // Persist selected benefit – only 1 at a time. Click same card to deselect, click different to replace.
+  const handleToggleBenefit = (entry) => {
+    setSelectedBenefits(prev => {
+      const exists = prev.some(b => b.id === entry.id);
+      if (exists) return [];
+      return [{
+        id: entry.id,
+        name: entry.name || entry.parentBenefit?.name,
+        supermercado: entry.supermercado,
+        day: entry.day,
+        value: entry.value,
+        limit: entry.limit,
+        tipo_beneficio: entry.parentBenefit?.tipo_beneficio || entry.tipo_beneficio
+      }];
+    });
+  };
+
+  // Sync selectedBenefits → localStorage, simulated day, and carousel position
+  React.useEffect(() => {
+    localStorage.setItem('compraiq_benefits', JSON.stringify(selectedBenefits));
+    if (selectedBenefits.length > 0) {
+      const b = selectedBenefits[0];
+      setSelectedDaySimulated(b.day);
+      const dayIdx = DAYS_ORDER.indexOf(b.day.toLowerCase());
+      if (dayIdx !== -1) {
+        setCarouselStartIdx(Math.max(0, Math.min(4, dayIdx - 1)));
+      }
+    }
+  }, [selectedBenefits]);
 
   // Image resolution helper
   const getBenefitImage = (name) => {
@@ -329,21 +407,17 @@ export default function App() {
     const s = store.toLowerCase();
     if (s === 'coto') return '/visuales/spk_assets/coto.webp';
     if (s === 'carrefour') return '/visuales/spk_assets/carrefour.svg';
-    if (s === 'dia') return null; // no dia.svg in folder, skip
+    if (s === 'dia') return null;
     if (s === 'jumbo') return '/visuales/spk_assets/jumbo.svg';
     if (s === 'disco') return '/visuales/spk_assets/disco.svg';
     if (s === 'vea') return '/visuales/spk_assets/vea.webp';
+    if (s === 'cordiez') return '/visuales/spk_assets/cordiez.svg';
     return null;
   };
 
   const DAY_ABBR = {
     lunes: 'Lun', martes: 'Mar', 'miércoles': 'Mié',
     jueves: 'Jue', viernes: 'Vie', sábado: 'Sáb', domingo: 'Dom'
-  };
-
-  const handleClearBenefits = () => {
-    setSelectedBenefits([]);
-    localStorage.removeItem('compraiq_benefits');
   };
 
   // Add Item to cart — supports both real DB products and legacy catalog shape
@@ -371,22 +445,13 @@ export default function App() {
 
   const handleAddCustomItem = (e) => {
     e.preventDefault();
-    if (!customItemText.trim()) return;
-
-    // If there's a search result highlighted, add first result
-    if (searchResults.length > 0) {
-      handleAddItem(searchResults[0]);
-    } else {
-      // Fallback: add as free-text item (no real price data)
-      setCart([...cart, {
-        name: customItemText.trim(),
-        categoria: 'General',
-        presentacion: '',
-        product_id: null,
-        basePrices: { Carrefour: 0, Dia: 0, Coto: 0, Jumbo: 0, Disco: 0, Vea: 0 },
-        quantity: 1
-      }]);
+    if (!customItemText.trim() || searchResults.length === 0) {
+      setCustomItemText('');
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
     }
+    handleAddItem(searchResults[0]);
     setCustomItemText('');
     setSearchResults([]);
     setShowSearchDropdown(false);
@@ -405,7 +470,9 @@ export default function App() {
 
     setIsSearching(true);
     searchDebounceRef.current = setTimeout(() => {
-      fetch(`http://localhost:5000/api/products/search?q=${encodeURIComponent(value)}&store=${encodeURIComponent(targetStore)}&limit=8`)
+      const params = new URLSearchParams({ q: value, store: searchStore || targetStore, limit: '20' });
+      if (categoryFilter) params.set('categoria', categoryFilter);
+      fetch(`http://localhost:5000/api/products/search?${params}`)
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -457,7 +524,7 @@ export default function App() {
   };
 
   // MATCHING ENGINE & OPTIMIZATION COMPUTATIONS
-  const supermarkets = ['Carrefour', 'Dia', 'Coto', 'Jumbo', 'Disco', 'Vea'];
+  const supermarkets = ['Carrefour', 'Dia', 'Coto', 'Jumbo', 'Disco', 'Vea', 'Toledo', 'Cordiez'];
 
   const results = useMemo(() => {
     if (cart.length === 0) return null;
@@ -480,22 +547,17 @@ export default function App() {
       let base = baseTotals[store];
       let discountApplied = 0;
 
-      // Look for user benefits applying to this store on simulated day (grouped structure has entries)
-      selectedBenefits.forEach(benefit => {
-        if (benefit.entries) {
-          benefit.entries.forEach(entry => {
-            // STRICT MATCH: Ensure the benefit is applied ONLY to the supermarket it specifies
-            if (
-              entry.supermercado.toLowerCase() === store.toLowerCase() &&
-              entry.day.toLowerCase() === selectedDaySimulated.toLowerCase()
-            ) {
-              let rawDiscount = base * (entry.value / 100);
-              if (rawDiscount > entry.limit) {
-                rawDiscount = entry.limit;
-              }
-              discountApplied += rawDiscount;
-            }
-          });
+      // Look for user selected entries applying to this store on simulated day
+      selectedBenefits.forEach(entry => {
+        if (
+          entry.supermercado.toLowerCase() === store.toLowerCase() &&
+          entry.day.toLowerCase() === selectedDaySimulated.toLowerCase()
+        ) {
+          let rawDiscount = base * (entry.value / 100);
+          if (rawDiscount > entry.limit) {
+            rawDiscount = entry.limit;
+          }
+          discountApplied += rawDiscount;
         }
       });
 
@@ -608,7 +670,7 @@ export default function App() {
           const discountedTotal = Math.max(baseTotal - rawDiscount, 0);
 
           if (discountedTotal < bestCost) {
-            const isSameBenefit = selectedBenefits.some(b => b.id === benefit.id);
+            const isSameBenefit = selectedBenefits.some(b => b.name === benefit.name);
             bestCost = discountedTotal;
             best = {
               benefit,
@@ -647,167 +709,224 @@ export default function App() {
       {/* TAB CONTENT */}
       <div style={{ flexGrow: 1, paddingBottom: '3.5rem' }}>
 
-        {/* TAB 1: BENEFITS ONBOARDING */}
-        {activeTab === 'benefits' && (
-          <div className="step-container" style={{ maxWidth: '100%' }}>
-            <h2 className="step-title">¿Dónde conviene comprar?</h2>
-            <p className="step-subtitle">
-              Compará tus descuentos por día y elegí el mejor momento.
-            </p>
+            {/* TAB 1: BENEFITS ONBOARDING */}
+            {activeTab === 'benefits' && (
+              <div className="step-container" style={{ maxWidth: '100%' }} key={'benefits-' + (benefitFilter || 'todos')}>
+                <h2 className="step-title">¿Dónde conviene comprar?</h2>
+                <p className="step-subtitle">
+                  Compará tus descuentos por día y elegí el mejor momento.
+                </p>
 
-            {/* Carousel nav header: arrows aligned with day titles */}
-            <div className="carousel-nav-header">
-              <button
-                type="button"
-                className={`carousel-arrow prev ${carouselStartIdx === 0 ? 'arrow-hidden' : ''}`}
-                onClick={() => setCarouselStartIdx(prev => Math.max(0, prev - 1))}
-                aria-label="Anterior"
-                disabled={carouselStartIdx === 0}
-              >
-                ‹
-              </button>
-              <div className="carousel-day-labels">
-                {['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'].map((dayName, dayIdx) => {
-                  const desktopStart = Math.min(4, carouselStartIdx);
-                  const isDayActiveInDesktop = dayIdx >= desktopStart && dayIdx < desktopStart + 3;
-                  const isDayActiveInMobile = dayIdx === carouselStartIdx;
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                    if (!isDayActiveInMobile) return null;
-                  } else {
-                    if (!isDayActiveInDesktop) return null;
-                  }
-                  const displayDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-                  return (
-                    <span key={dayName} className="carousel-day-label-item">{displayDayName}</span>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                className={`carousel-arrow next ${carouselStartIdx >= 4 ? 'arrow-hidden' : ''}`}
-                onClick={() => setCarouselStartIdx(prev => prev + 1)}
-                aria-label="Siguiente"
-                disabled={carouselStartIdx >= 4}
-              >
-                ›
-              </button>
-            </div>
+                {/* Filtro activo debug */}
+                <div style={{ fontSize: '0.75rem', color: benefitFilter ? '#16a34a' : 'var(--text-tertiary)', marginBottom: '0.25rem', fontWeight: 600 }}>
+                  {benefitFilter ? `Filtrando: ${benefitFilter}` : 'Mostrando todos los beneficios'}
+                </div>
 
-            {/* Columns scroll (no arrows inside) */}
-            <div className="benefits-columns-scroll">
-              {['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'].map((dayName, dayIdx) => {
-                // Determine if day is active in mobile (shows only the selected single day)
-                // and desktop (shows 3 days from carouselStartIdx)
-                const isDayActiveInMobile = dayIdx === carouselStartIdx;
-
-                // For desktop, clamp carouselStartIdx to max 4 to show exactly 3 columns (index 4, 5, 6)
-                const desktopStart = Math.min(4, carouselStartIdx);
-                const isDayActiveInDesktop = dayIdx >= desktopStart && dayIdx < desktopStart + 3;
-
-                // Gather all promotions (flat) for this day
-                const dayPromos = [];
-                Object.keys(dynamicPromotions).forEach(cat => {
-                  dynamicPromotions[cat].forEach(benefit => {
-                    benefit.entries.forEach(entry => {
-                      if (entry.day.toLowerCase() === dayName.toLowerCase()) {
-                        dayPromos.push({
-                          id: `${benefit.id}-${entry.supermercado}-${entry.day}`,
-                          parentBenefit: benefit,
-                          name: benefit.name,
-                          supermercado: entry.supermercado,
-                          value: entry.value,
-                          limit: entry.limit
-                        });
-                      }
-                    });
+                  {/* Benefit filter pills */}
+                {(() => {
+                  const benefitNames = new Set();
+                  Object.values(dynamicPromotions).forEach(cat => {
+                    cat.forEach(benefit => benefitNames.add(benefit.name));
                   });
-                });
-
-                // Sort promos descending by value
-                dayPromos.sort((a, b) => b.value - a.value);
-
-                const displayDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-
-                return (
-                  <div
-                    key={dayName}
-                    className={`redesigned-week-day-column day-${dayName} ${isDayActiveInMobile ? 'active-column' : ''} ${isDayActiveInDesktop ? 'visible-in-carousel' : ''}`}
-                  >
-
-                    <div className="column-promos-list">
-                      {dayPromos.length > 0 ? (
-                        dayPromos.map((p) => {
-                          const isSel = selectedBenefits.some(b => b.id === p.parentBenefit.id);
-                          const benImg = getBenefitImage(p.name);
-                          const superImg = getSupermarketImage(p.supermercado);
-
-                          let bankName = p.name;
-                          let cardName = p.parentBenefit.subName || '';
-
-                          return (
-                            <div
-                              key={p.id}
-                              className={`visual-day-promo-card-redesigned ${isSel ? 'selected' : ''}`}
-                              onClick={() => handleToggleBenefit(p.parentBenefit)}
-                              title={`${p.name} - ${p.value}% en ${p.supermercado}`}
-                            >
-                              {/* Selected check indicator */}
-                              <div className={`redesigned-check-indicator ${isSel ? 'active' : ''}`}>
-                                {isSel && <Check style={{ width: '10px', height: '10px', color: '#fff' }} />}
-                              </div>
-
-                              {/* Supermarket Logo */}
-                              <div className="card-super-logo">
-                                {p.supermercado.toLowerCase() === 'dia' ? (
-                                  <span className="dia-logo-placeholder">DIA %</span>
-                                ) : superImg ? (
-                                  <img src={superImg} alt={p.supermercado} />
-                                ) : (
-                                  <span className="card-super-text-logo">{p.supermercado}</span>
-                                )}
-                              </div>
-
-                              {/* Discount Value */}
-                              <div className="card-discount-val">{p.value}% OFF</div>
-
-                              {/* Bank / Card info */}
-                              <div className="card-bank-info">
-                                <span className="bank-name">{bankName}</span>
-                                {cardName && <span className="card-name">{cardName}</span>}
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="no-promos-text">Sin promos</div>
-                      )}
+                  const uniqueBenefits = Array.from(benefitNames).sort();
+                  if (uniqueBenefits.length <= 1) return null;
+                  return (
+                    <div className="benefit-filter-row">
+                      <button
+                        className={`benefit-filter-pill ${benefitFilter === null ? 'active' : ''}`}
+                        onClick={() => handleFilterClick(null)}
+                      >
+                        Todos
+                      </button>
+                      {uniqueBenefits.map(name => {
+                        const img = getBenefitImage(name);
+                        return (
+                          <button
+                            key={name}
+                            className={`benefit-filter-pill ${benefitFilter === name ? 'active' : ''}`}
+                            onClick={() => handleFilterClick(name)}
+                          >
+                            {img && <img src={img} alt={name} className="benefit-filter-img" />}
+                            <span>{name}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })()}
 
-            {selectedBenefits.length > 0 && (
-              <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button className="btn-text btn-danger-text" onClick={handleClearBenefits}>
-                  Limpiar selección
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => setActiveTab('cart')}
-                  style={{ backgroundColor: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', borderRadius: '4px' }}
-                >
-                  Ir al Changuito <ChevronRight style={{ width: '16px', height: '16px' }} />
-                </button>
+                {/* Carousel nav header: arrows aligned with day titles */}
+                <div className="carousel-nav-header">
+                  <button
+                    type="button"
+                    className={`carousel-arrow prev ${carouselStartIdx === 0 ? 'arrow-hidden' : ''}`}
+                    onClick={() => setCarouselStartIdx(prev => Math.max(0, prev - 1))}
+                    aria-label="Anterior"
+                    disabled={carouselStartIdx === 0}
+                  >
+                    ‹
+                  </button>
+                  <div className="carousel-day-labels">
+                    {['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'].map((dayName, dayIdx) => {
+                      const desktopStart = Math.min(4, carouselStartIdx);
+                      const isDayActiveInDesktop = dayIdx >= desktopStart && dayIdx < desktopStart + 3;
+                      const isDayActiveInMobile = dayIdx === carouselStartIdx;
+                      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                        if (!isDayActiveInMobile) return null;
+                      } else {
+                        if (!isDayActiveInDesktop) return null;
+                      }
+                      const displayDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+                      return (
+                        <span key={dayName} className="carousel-day-label-item">{displayDayName}</span>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    className={`carousel-arrow next ${carouselStartIdx >= 4 ? 'arrow-hidden' : ''}`}
+                    onClick={() => setCarouselStartIdx(prev => prev + 1)}
+                    aria-label="Siguiente"
+                    disabled={carouselStartIdx >= 4}
+                  >
+                    ›
+                  </button>
+                </div>
+
+                {/* Columns scroll (no arrows inside) */}
+                <div className="benefits-columns-scroll">
+                  {['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'].map((dayName, dayIdx) => {
+                    const isDayActiveInMobile = dayIdx === carouselStartIdx;
+                    const desktopStart = Math.min(4, carouselStartIdx);
+                    const isDayActiveInDesktop = dayIdx >= desktopStart && dayIdx < desktopStart + 3;
+
+                    const dayPromos = [];
+                    Object.keys(filteredBenefits).forEach(cat => {
+                      filteredBenefits[cat].forEach(benefit => {
+                        benefit.entries.forEach(entry => {
+                          if (entry.day.toLowerCase() === dayName.toLowerCase()) {
+                            dayPromos.push({
+                              id: `${benefit.id}-${entry.supermercado}-${entry.day}`,
+                              parentBenefit: benefit,
+                              name: benefit.name,
+                              supermercado: entry.supermercado,
+                              day: entry.day,
+                              value: entry.value,
+                              limit: entry.limit
+                            });
+                          }
+                        });
+                      });
+                    });
+
+                    dayPromos.sort((a, b) => b.value - a.value);
+
+                    return (
+                      <div
+                        key={dayName}
+                        className={`redesigned-week-day-column day-${dayName} ${isDayActiveInMobile ? 'active-column' : ''} ${isDayActiveInDesktop ? 'visible-in-carousel' : ''}`}
+                      >
+                        <div className="column-promos-list">
+                          {dayPromos.length > 0 ? (
+                            dayPromos.map((p) => {
+                              const isSel = selectedBenefits.some(b => b.id === p.id);
+                              const superImg = getSupermarketImage(p.supermercado);
+
+                              return (
+                                <div
+                                  key={p.id}
+                                  className={`visual-day-promo-card-redesigned ${isSel ? 'selected' : ''}`}
+                                  onClick={() => handleToggleBenefit(p)}
+                                  title={`${p.name} - ${p.value}% en ${p.supermercado} (${p.day})`}
+                                >
+                                  <div className={`redesigned-check-indicator ${isSel ? 'active' : ''}`}>
+                                    {isSel && <Check style={{ width: '10px', height: '10px', color: '#fff' }} />}
+                                  </div>
+
+                                  <div className="card-super-logo">
+                                    {superImg ? (
+                                      <img src={superImg} alt={p.supermercado} />
+                                    ) : (
+                                      <span className="card-super-text-logo">{p.supermercado}</span>
+                                    )}
+                                  </div>
+
+                                  <div className="card-discount-val">{p.value}% OFF</div>
+
+                                  <div className="card-bank-info">
+                                    <span className="bank-name">{p.name}</span>
+                                    <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                                      {p.supermercado}
+                                    </span>
+                                  </div>
+                                  {isSel && (
+                                    <button
+                                      className="continue-btn"
+                                      onClick={(e) => { e.stopPropagation(); setActiveTab('cart'); }}
+                                    >
+                                      Continuar <ChevronRight style={{ width: '14px', height: '14px' }} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="no-promos-text">Sin promos</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
         {/* TAB 3: SHOPPING CART & OPTIMIZER */}
         {activeTab === 'cart' && (
           <div className="step-container">
+            {/* Benefit badge */}
+            {selectedBenefits.length > 0 && (() => {
+              const b = selectedBenefits[0];
+              return (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  borderRadius: '8px', padding: '0.5rem 0.75rem', marginBottom: '1rem',
+                  fontSize: '0.8rem', color: '#166534'
+                }}>
+                  <ShoppingBag style={{ width: '14px', height: '14px', color: '#16a34a' }} />
+                  <span>
+                    <strong>{targetStore}</strong> con <strong>{b.name}</strong>
+                    {' · '}<strong>{b.value}% OFF</strong>
+                    {b.day && <> el <strong>{b.day}</strong></>}
+                  </span>
+                </div>
+              );
+            })()}
+
             <h2 className="step-title" style={{ fontFamily: 'var(--font-serif)' }}>¿Qué necesitás comprar?</h2>
+
+            {/* Store selector */}
+            {supermarketsList.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600, alignSelf: 'center' }}>Super:</span>
+                {supermarketsList.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setSearchStore(s)}
+                    style={{
+                      fontSize: '0.7rem', fontWeight: 600, padding: '3px 10px',
+                      borderRadius: '14px', border: '1px solid var(--border-color)',
+                      background: (searchStore || targetStore) === s ? 'var(--accent)' : '#fff',
+                      color: (searchStore || targetStore) === s ? '#fff' : 'var(--text-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Real product search with dropdown */}
             <div style={{ position: 'relative' }}>
@@ -817,7 +936,7 @@ export default function App() {
                   <input
                     type="text"
                     className="cart-input"
-                    placeholder={`Buscar en ${targetStore}...`}
+                    placeholder={`Buscar en ${searchStore || targetStore}...`}
                     value={customItemText}
                     onChange={(e) => handleSearchInput(e.target.value)}
                     onFocus={() => searchResults.length > 0 && setShowSearchDropdown(true)}
@@ -836,6 +955,39 @@ export default function App() {
                 </div>
               </form>
 
+              {/* Category filter pills from results */}
+              {searchResults.length > 0 && (() => {
+                const cats = [...new Set(searchResults.map(r => r.categoria).filter(Boolean))];
+                if (cats.length <= 1) return null;
+                return (
+                  <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.4rem', marginBottom: '0.25rem' }}>
+                    <button
+                      onClick={() => { setCategoryFilter(null); setShowSearchDropdown(true); }}
+                      style={{
+                        fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px',
+                        border: '1px solid var(--border-color)',
+                        background: !categoryFilter ? 'var(--accent)' : '#fff',
+                        color: !categoryFilter ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >Todas</button>
+                    {cats.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => { setCategoryFilter(categoryFilter === c ? null : c); setShowSearchDropdown(true); }}
+                        style={{
+                          fontSize: '0.65rem', fontWeight: 600, padding: '2px 8px', borderRadius: '10px',
+                          border: '1px solid var(--border-color)',
+                          background: categoryFilter === c ? 'var(--accent)' : '#fff',
+                          color: categoryFilter === c ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer'
+                        }}
+                      >{c}</button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Search results dropdown */}
               {showSearchDropdown && searchResults.length > 0 && (
                 <div style={{
@@ -845,7 +997,8 @@ export default function App() {
                   maxHeight: '280px', overflowY: 'auto', marginTop: '4px'
                 }}>
                   {searchResults.map((product) => {
-                    const priceAtStore = product.prices[targetStore];
+                    const effectiveStore = searchStore || targetStore;
+                    const priceAtStore = product.prices[effectiveStore];
                     const minPrice = Math.min(...Object.values(product.prices));
                     const alreadyInCart = cart.some(c => c.product_id === product.product_id || c.name === product.nombre);
                     return (
@@ -875,7 +1028,7 @@ export default function App() {
                             {product.categoria} {product.presentacion ? `· ${product.presentacion}` : ''}
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.75rem' }}>
+                          <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.75rem' }}>
                           {priceAtStore ? (
                             <span style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--accent)' }}>
                               ${fmt(priceAtStore)}
@@ -886,7 +1039,7 @@ export default function App() {
                             </span>
                           )}
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                            {priceAtStore ? targetStore : 'otro super'}
+                            {priceAtStore ? effectiveStore : 'otro super'}
                           </div>
                         </div>
                         {alreadyInCart && (
@@ -919,84 +1072,124 @@ export default function App() {
             {/* Shopping List */}
             {cart.length > 0 ? (
               <div className="shopping-list">
-                {cart.map((item, idx) => {
-                  const allPrices = Object.values(item.basePrices).filter(v => v > 0);
-                  const lowestPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
-                  const itemPrice = item.basePrices[targetStore] || lowestPrice;
-                  const itemSubtotal = itemPrice * item.quantity;
-
-                  return (
-                    <div
-                      className="shopping-item"
-                      key={idx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0.85rem 1rem',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '12px',
-                        marginBottom: '0.5rem',
-                        backgroundColor: '#fff',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
-                      }}
-                    >
-                      <div className="item-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexGrow: 1 }}>
-                        <div className="checkbox-custom checked" style={{ borderRadius: '50%' }}>
-                          <Check style={{ width: '10px', height: '10px' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span className="item-name" style={{ fontSize: '0.95rem', fontWeight: '600' }}>
-                            {item.name}
-                          </span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                            {item.presentacion || item.categoria || 'Producto'}{itemPrice > 0 ? ` · $${fmt(itemPrice)} c/u en ${targetStore}` : ' · precio a confirmar'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Brand selector setting button + quantity controls */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div style={{ textAlign: 'right', minWidth: '70px', marginRight: '0.25rem' }}>
-                          <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-                            ${fmt(itemSubtotal)}
-                          </span>
-                        </div>
-
-
-
-                        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', height: '28px' }}>
-                          <button
-                            onClick={() => handleUpdateQuantity(idx, -1)}
-                            style={{ background: 'none', border: 'none', width: '24px', height: '100%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            -
-                          </button>
-                          <span style={{ fontSize: '0.8rem', fontWeight: '700', padding: '0 8px', backgroundColor: 'var(--bg-secondary)', height: '100%', display: 'flex', alignItems: 'center' }}>
-                            ({item.quantity})
-                          </span>
-                          <button
-                            onClick={() => handleUpdateQuantity(idx, 1)}
-                            style={{ background: 'none', border: 'none', width: '24px', height: '100%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        <button
-                          onClick={() => handleRemoveItem(idx)}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.25rem' }}
-                        >
-                          <Trash2 style={{ width: '15px', height: '15px' }} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Totals row — simplified, no redundant store name */}
                 {(() => {
-                  const totalValue = Math.round(results?.baseTotals[targetStore] || 0);
+                  // Compute selected benefit discount info for target store
+                  let activeBenefit = null;
+                  let activeDiscountVal = 0;
+                  let activeLimit = 9999;
+                  selectedBenefits.forEach(entry => {
+                    if (entry.supermercado.toLowerCase() === targetStore.toLowerCase() &&
+                        entry.day.toLowerCase() === selectedDaySimulated.toLowerCase()) {
+                      activeBenefit = { name: entry.name };
+                      activeDiscountVal += entry.value;
+                      activeLimit = Math.min(activeLimit, entry.limit || 9999);
+                    }
+                  });
+                  const hasDiscount = activeBenefit && activeDiscountVal > 0;
+                  const discountFactor = hasDiscount ? (1 - activeDiscountVal / 100) : 1;
+
+                  return cart.map((item, idx) => {
+                    const allPrices = Object.values(item.basePrices).filter(v => v > 0);
+                    const lowestPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
+                    const itemPrice = item.basePrices[targetStore] || lowestPrice;
+                    const itemSubtotal = itemPrice * item.quantity;
+                    const discountedSubtotal = hasDiscount ? Math.round(itemSubtotal * discountFactor) : itemSubtotal;
+                    const itemSaving = itemSubtotal - discountedSubtotal;
+
+                    return (
+                      <div
+                        className="shopping-item"
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.85rem 1rem',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '12px',
+                          marginBottom: '0.5rem',
+                          backgroundColor: '#fff',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                        }}
+                      >
+                        <div className="item-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexGrow: 1 }}>
+                          <div className="checkbox-custom checked" style={{ borderRadius: '50%' }}>
+                            <Check style={{ width: '10px', height: '10px' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span className="item-name" style={{ fontSize: '0.95rem', fontWeight: '600' }}>
+                              {item.name}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {item.presentacion || item.categoria || 'Producto'}
+                              {itemPrice > 0 ? ` · $${fmt(itemPrice)} c/u en ${targetStore}` : ' · precio a confirmar'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          {/* Price with discount */}
+                          <div style={{ textAlign: 'right', minWidth: '80px', marginRight: '0.25rem' }}>
+                            {hasDiscount && itemSaving > 0 ? (
+                              <>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textDecoration: 'line-through', display: 'block' }}>
+                                  ${fmt(itemSubtotal)}
+                                </span>
+                                <span style={{ fontSize: '0.9rem', fontWeight: '700', color: '#16a34a' }}>
+                                  ${fmt(discountedSubtotal)}
+                                </span>
+                              </>
+                            ) : (
+                              <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                ${fmt(itemSubtotal)}
+                              </span>
+                            )}
+                          </div>
+
+                          {hasDiscount && activeDiscountVal > 0 && (
+                            <span style={{
+                              fontSize: '0.6rem', fontWeight: '700', background: '#dcfce7', color: '#16a34a',
+                              padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap'
+                            }}>
+                              -{activeDiscountVal}%
+                            </span>
+                          )}
+
+                          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', height: '28px' }}>
+                            <button
+                              onClick={() => handleUpdateQuantity(idx, -1)}
+                              style={{ background: 'none', border: 'none', width: '24px', height: '100%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              -
+                            </button>
+                            <span style={{ fontSize: '0.8rem', fontWeight: '700', padding: '0 8px', backgroundColor: 'var(--bg-secondary)', height: '100%', display: 'flex', alignItems: 'center' }}>
+                              ({item.quantity})
+                            </span>
+                            <button
+                              onClick={() => handleUpdateQuantity(idx, 1)}
+                              style={{ background: 'none', border: 'none', width: '24px', height: '100%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveItem(idx)}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.25rem' }}
+                          >
+                            <Trash2 style={{ width: '15px', height: '15px' }} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+
+                {/* Totals row — original vs discounted */}
+                {(() => {
+                  const baseTotal = Math.round(results?.baseTotals[targetStore] || 0);
+                  const discTotal = Math.round(results?.discountedTotals[targetStore] || 0);
+                  const saving = baseTotal - discTotal;
                   return (
                     <div style={{
                       display: 'flex',
@@ -1009,9 +1202,21 @@ export default function App() {
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
                         Total &middot; {cart.reduce((s, i) => s + i.quantity, 0)} productos
                       </span>
-                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'var(--font-serif)' }}>
-                        <AnimatedTotal value={totalValue} />
-                      </span>
+                      <div style={{ textAlign: 'right' }}>
+                        {saving > 0 && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textDecoration: 'line-through', display: 'block' }}>
+                            ${fmt(baseTotal)}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '1.3rem', fontWeight: '800', color: saving > 0 ? '#16a34a' : 'var(--text-primary)', fontFamily: 'var(--font-serif)' }}>
+                          <AnimatedTotal value={discTotal} />
+                        </span>
+                        {saving > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: '600', display: 'block' }}>
+                            Ahorrás ${fmt(saving)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
@@ -1314,7 +1519,7 @@ export default function App() {
 
         // Determine which supermarket we are shopping at (from selected benefits)
         // If a benefit is selected, use its supermarket, otherwise fallback to the best single store or a default
-        const targetStore = (selectedBenefits.length > 0 && selectedBenefits[0].entries && selectedBenefits[0].entries[0]?.supermercado)
+        const targetStore = (selectedBenefits.length > 0 && selectedBenefits[0].supermercado)
           || results?.bestSingleStore
           || 'Carrefour';
 

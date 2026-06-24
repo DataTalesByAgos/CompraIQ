@@ -5,6 +5,12 @@ import json
 from datetime import datetime
 import re
 
+def _end_of_month() -> str:
+    today = datetime.now()
+    if today.month == 12:
+        return today.replace(day=31).strftime("%Y-%m-%d")
+    return today.replace(month=today.month + 1, day=1).strftime("%Y-%m-%d")
+
 def scrape_cencosud_carrefour_promotions() -> list[dict]:
     # Este scraper cubre los sitios de Cencosud (Jumbo, Disco, Vea) y Carrefour Argentina
     urls = {
@@ -97,12 +103,14 @@ def scrape_cencosud_carrefour_promotions() -> list[dict]:
                         "beneficio": beneficio,
                         "tipo_beneficio": tipo_beneficio,
                         "tipo_descuento": "porcentaje",
+                        "alcance": "general",
+                        "acumulable": tipo_beneficio in ("club", "prensa"),
                         "valor": valor,
                         "dia_semana": dia,
                         "tope_descuento_pesos": tope or 1200.0,
                         "categorias_aplicables": "all",
                         "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-                        "fecha_fin": "2026-12-31",
+                        "fecha_fin": _end_of_month(),
                         "url_fuente": url
                     })
                     
@@ -147,12 +155,14 @@ def _add_fallbacks_for_store(store_name: str, target_list: list):
             "beneficio": p["beneficio"],
             "tipo_beneficio": p["tipo_beneficio"],
             "tipo_descuento": "porcentaje",
+            "alcance": "general",
+            "acumulable": p["tipo_beneficio"] in ("club", "prensa"),
             "valor": p["valor"],
             "dia_semana": p["dia"],
             "tope_descuento_pesos": p["tope"],
             "categorias_aplicables": "all",
             "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-            "fecha_fin": "2026-12-31",
+            "fecha_fin": _end_of_month(),
             "url_fuente": url
         })
 

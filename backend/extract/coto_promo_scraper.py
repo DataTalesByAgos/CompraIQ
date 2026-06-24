@@ -90,12 +90,14 @@ def scrape_coto_promotions() -> list[dict]:
                     "beneficio": beneficio,
                     "tipo_beneficio": tipo_beneficio,
                     "tipo_descuento": "porcentaje",
+                    "alcance": "general",
+                    "acumulable": tipo_beneficio in ("club", "prensa"),
                     "valor": valor,
                     "dia_semana": dia,
                     "tope_descuento_pesos": tope or 1500.0,
                     "categorias_aplicables": "all",
                     "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-                    "fecha_fin": "2026-12-31",
+                    "fecha_fin": datetime.now().replace(month=datetime.now().month+1, day=1).strftime("%Y-%m-%d") if datetime.now().month < 12 else datetime.now().replace(day=31).strftime("%Y-%m-%d"),
                     "url_fuente": url
                 })
                 
@@ -111,6 +113,11 @@ def scrape_coto_promotions() -> list[dict]:
 
 def _fallback_coto_promos() -> list[dict]:
     print("  ℹ [Scraper Coto] Using verified active promotion channels for Coto...")
+    today = datetime.now()
+    if today.month == 12:
+        end_of_month = today.replace(day=31)
+    else:
+        end_of_month = today.replace(month=today.month + 1, day=1)
     promos = [
         {"beneficio": "Banco Galicia", "tipo_beneficio": "banco", "valor": 15.0, "dia": "viernes", "tope": 1500.0},
         {"beneficio": "Coto Club", "tipo_beneficio": "club", "valor": 10.0, "dia": "lunes", "tope": 9999.0},
@@ -129,12 +136,14 @@ def _fallback_coto_promos() -> list[dict]:
             "beneficio": p["beneficio"],
             "tipo_beneficio": p["tipo_beneficio"],
             "tipo_descuento": "porcentaje",
+            "alcance": "general",
+            "acumulable": p["tipo_beneficio"] in ("club", "prensa"),
             "valor": p["valor"],
             "dia_semana": p["dia"],
             "tope_descuento_pesos": p["tope"],
             "categorias_aplicables": "all",
-            "fecha_inicio": datetime.now().strftime("%Y-%m-%d"),
-            "fecha_fin": "2026-12-31",
+            "fecha_inicio": today.strftime("%Y-%m-%d"),
+            "fecha_fin": end_of_month.strftime("%Y-%m-%d"),
             "url_fuente": url
         })
     return results

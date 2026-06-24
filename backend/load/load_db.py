@@ -3,7 +3,6 @@ import time
 from datetime import date
 import mysql.connector
 from transform.parse_units import parse_presentation, calc_price_per_unit
-from transform.classify import predict_category
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +81,8 @@ def insert_raw(data: list[dict], ingestion_key: int) -> list[int]:
 # ---------------------------------------------------------------------------
 # 2. HELPERS: upsert de dimensiones
 # ---------------------------------------------------------------------------
-def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str = None) -> int:
-    """Inserta o actualiza dim_product usando EAN (primario) o Nombre (secundario)."""
-    if not categoria:
-        categoria = predict_category(nombre)
+def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str = None, marca: str = "") -> int:
     if ean:
-        # 1. Buscar por EAN
         cursor.execute("SELECT product_id FROM dim_product WHERE ean = %s", (ean,))
         row = cursor.fetchone()
         if row:
@@ -96,6 +91,7 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
                 """
                 UPDATE dim_product SET
                     nombre           = %s,
+                    marca            = %s,
                     categoria        = COALESCE(%s, categoria),
                     unit_quantity    = %s,
                     unit_type        = %s,
@@ -106,36 +102,7 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
                 """,
                 (
                     nombre,
-                    categoria,
-                    parsed["unit_quantity"],
-                    parsed["unit_type"],
-                    parsed["unit_multiplier"],
-                    parsed["base_quantity"],
-                    parsed["presentacion_raw"],
-                    product_id,
-                )
-            )
-            return product_id
-        
-        # 2. Si no existe por EAN, buscar por Nombre que no tenga EAN asignado
-        cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s AND ean IS NULL LIMIT 1", (nombre,))
-        row = cursor.fetchone()
-        if row:
-            product_id = row[0]
-            cursor.execute(
-                """
-                UPDATE dim_product SET
-                    ean              = %s,
-                    categoria        = COALESCE(%s, categoria),
-                    unit_quantity    = %s,
-                    unit_type        = %s,
-                    unit_multiplier  = %s,
-                    base_quantity    = %s,
-                    presentacion_raw = %s
-                WHERE product_id = %s
-                """,
-                (
-                    ean,
+                    marca,
                     categoria,
                     parsed["unit_quantity"],
                     parsed["unit_type"],
@@ -147,17 +114,48 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
             )
             return product_id
 
-        # 3. Si no existe por EAN ni por Nombre sin EAN, insertar nuevo
+        cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s AND ean IS NULL LIMIT 1", (nombre,))
+        row = cursor.fetchone()
+        if row:
+            product_id = row[0]
+            cursor.execute(
+                """
+                UPDATE dim_product SET
+                    ean              = %s,
+                    marca            = %s,
+                    categoria        = COALESCE(%s, categoria),
+                    unit_quantity    = %s,
+                    unit_type        = %s,
+                    unit_multiplier  = %s,
+                    base_quantity    = %s,
+                    presentacion_raw = %s
+                WHERE product_id = %s
+                """,
+                (
+                    ean,
+                    marca,
+                    categoria,
+                    parsed["unit_quantity"],
+                    parsed["unit_type"],
+                    parsed["unit_multiplier"],
+                    parsed["base_quantity"],
+                    parsed["presentacion_raw"],
+                    product_id,
+                )
+            )
+            return product_id
+
         cursor.execute(
             """
             INSERT INTO dim_product
-                (ean, nombre, categoria, unit_quantity, unit_type, unit_multiplier,
+                (ean, nombre, marca, categoria, unit_quantity, unit_type, unit_multiplier,
                  base_quantity, presentacion_raw)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 ean,
                 nombre,
+                marca,
                 categoria,
                 parsed["unit_quantity"],
                 parsed["unit_type"],
@@ -168,7 +166,6 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
         )
         return cursor.lastrowid
     else:
-        # Buscar por Nombre únicamente (para fallbacks)
         cursor.execute("SELECT product_id FROM dim_product WHERE nombre = %s LIMIT 1", (nombre,))
         row = cursor.fetchone()
         if row:
@@ -176,6 +173,7 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
             cursor.execute(
                 """
                 UPDATE dim_product SET
+                    marca            = %s,
                     categoria        = COALESCE(%s, categoria),
                     unit_quantity    = %s,
                     unit_type        = %s,
@@ -185,6 +183,7 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
                 WHERE product_id = %s
                 """,
                 (
+                    marca,
                     categoria,
                     parsed["unit_quantity"],
                     parsed["unit_type"],
@@ -199,12 +198,13 @@ def _upsert_product(cursor, nombre: str, categoria: str, parsed: dict, ean: str 
             cursor.execute(
                 """
                 INSERT INTO dim_product
-                    (ean, nombre, categoria, unit_quantity, unit_type, unit_multiplier,
+                    (ean, nombre, marca, categoria, unit_quantity, unit_type, unit_multiplier,
                      base_quantity, presentacion_raw)
-                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     nombre,
+                    marca,
                     categoria,
                     parsed["unit_quantity"],
                     parsed["unit_type"],
@@ -271,19 +271,34 @@ def insert_dimensional(data: list[dict], raw_ids: list[int], ingestion_key: int)
 
     date_id = _upsert_date(cursor, today)
 
+    def _parse_price(raw: str) -> float | None:
+        """Parsea un precio desde string manejando múltiples formatos.
+
+        Formatos soportados:
+          - "2420.0"      (float string – VTEX API)
+          - "$2.599,00"   (argentino con símbolo)
+          - "2599"        (entero simple)
+        """
+        s = str(raw).replace("$", "").replace("ARS", "").strip()
+        if not s:
+            return None
+        # 1. Intentar parseo directo (cubre "2420.0", "2599", "1234.56")
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        # 2. Formato argentino: "2.599,00" → "2599.00"
+        try:
+            s = s.replace(".", "").replace(",", ".")
+            return float(s)
+        except ValueError:
+            return None
+
     for row, raw_id in zip(data, raw_ids):
         # --- Limpiar precio ---
-        precio_str = row["precio"]
-        try:
-            precio_float = float(
-                precio_str
-                .replace("$", "")
-                .replace(".", "")
-                .replace(",", ".")
-                .strip()
-            )
-        except ValueError:
-            print(f"    [WARN] Precio inválido ignorado: {precio_str!r}")
+        precio_float = _parse_price(row["precio"])
+        if precio_float is None:
+            print(f"    [WARN] Precio inválido ignorado: {row['precio']!r}")
             continue
 
         if precio_float <= 0:
@@ -294,11 +309,14 @@ def insert_dimensional(data: list[dict], raw_ids: list[int], ingestion_key: int)
         parsed = parse_presentation(row.get("presentacion") or "")
 
         # Si la presentación no vino, intentar inferirla del nombre
+        # pero sin guardar el nombre del producto como presentacion_raw
         if parsed["unit_type"] is None:
-            parsed = parse_presentation(row["producto"])
+            product_name = row["producto"]
+            parsed = parse_presentation(product_name)
+            parsed["presentacion_raw"] = None
 
         # --- Upsert dimensiones ---
-        product_id     = _upsert_product(cursor, row["producto"], row.get("categoria"), parsed, row.get("ean"))
+        product_id     = _upsert_product(cursor, row["producto"], row.get("categoria"), parsed, row.get("ean"), row.get("marca", ""))
         supermarket_id = _upsert_supermarket(cursor, row["supermercado"])
         source_id      = _get_source_id(cursor, row.get("fuente", "selenium"))
 

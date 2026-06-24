@@ -33,6 +33,8 @@ class DimProduct(db.Model):
     product_id      = db.Column(db.Integer, primary_key=True)
     ean             = db.Column(db.String(50))
     nombre          = db.Column(db.String(255), nullable=False)
+    marca           = db.Column(db.String(100))
+    search_tags     = db.Column(db.Text)
     categoria       = db.Column(db.String(100))
     unit_quantity   = db.Column(db.Numeric(10, 3))
     unit_type       = db.Column(db.String(10))
@@ -86,6 +88,15 @@ class Promotion(db.Model):
     fecha_fin             = db.Column(db.Date)
     url_fuente            = db.Column(db.String(255))
     actualizado_el        = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _top_category(cat_raw: str) -> str:
+    """Extract the top-level category (first whitespace-separated word)."""
+    if not cat_raw:
+        return ""
+    return cat_raw.split()[0]
 
 
 # ── Helper: latest price per product per supermarket (subquery) ──────────────
@@ -148,9 +159,10 @@ def search_products():
         store (str) : preferred supermarket name (optional, for sorting)
         limit (int) : max products to return (default 8, max 30)
     """
-    q     = request.args.get("q", "").strip()
-    store = request.args.get("store", "").strip()
-    limit = min(int(request.args.get("limit", 8)), 30)
+    q         = request.args.get("q", "").strip()
+    store     = request.args.get("store", "").strip()
+    categoria = request.args.get("categoria", "").strip()
+    limit     = min(int(request.args.get("limit", 20)), 50)
 
     if len(q) < 2:
         return jsonify([])
@@ -164,6 +176,7 @@ def search_products():
             db.session.query(
                 DimProduct.product_id,
                 DimProduct.nombre,
+                DimProduct.marca,
                 DimProduct.categoria,
                 DimProduct.presentacion_raw,
                 DimSupermarket.nombre.label("supermercado"),
@@ -172,7 +185,7 @@ def search_products():
             .join(FactPrice, DimProduct.product_id == FactPrice.product_id)
             .join(latest_sq, FactPrice.fact_id == latest_sq.c.max_fact_id)
             .join(DimSupermarket, FactPrice.supermarket_id == DimSupermarket.supermarket_id)
-            .filter(DimProduct.nombre.ilike(f"%{q}%"))
+            .filter(text("MATCH(dim_product.nombre, dim_product.marca, dim_product.search_tags) AGAINST (:q IN BOOLEAN MODE)").params(q=q))
         )
 
         # Filter strictly to products sold at the preferred store
@@ -185,7 +198,12 @@ def search_products():
             )
             query = query.filter(DimProduct.product_id.in_(store_pids_sq))
 
-        rows = query.order_by(DimProduct.nombre).all()
+        # Filter by top-level category
+        if categoria:
+            query = query.filter(DimProduct.categoria.startswith(categoria))
+
+        query = query.order_by(DimProduct.nombre)
+        rows = query.all()
 
         # Group by product_id → collect prices per supermarket
         products: dict[int, dict] = {}
@@ -201,6 +219,7 @@ def search_products():
                 products[pid] = {
                     "product_id":   pid,
                     "nombre":       row.nombre,
+                    "marca":        row.marca or "",
                     "categoria":    cat_clean,
                     "presentacion": row.presentacion_raw or "",
                     "prices":       {},
@@ -208,10 +227,14 @@ def search_products():
             products[pid]["prices"][row.supermercado] = int(row.price)
 
         result_list = list(products.values())
-
-        # Sort: if a preferred store is specified, put products available there first
-        if store:
-            result_list.sort(key=lambda p: (store not in p["prices"], p["nombre"]))
+        # Sort: prefix match first, then store availability, then alphabetical
+        q_lower = q.lower()
+        store_pref = store if store else ""
+        result_list.sort(key=lambda p: (
+            0 if p["nombre"].lower().startswith(q_lower) else 1,
+            0 if store_pref in p["prices"] else 1,
+            p["nombre"].lower()
+        ))
 
         return jsonify(result_list[:limit])
 
@@ -247,6 +270,7 @@ def popular_products():
                 db.session.query(
                     DimProduct.product_id,
                     DimProduct.nombre,
+                    DimProduct.marca,
                     DimProduct.categoria,
                     DimProduct.presentacion_raw,
                     FactPrice.price,
@@ -256,7 +280,7 @@ def popular_products():
                 .join(DimSupermarket, FactPrice.supermarket_id == DimSupermarket.supermarket_id)
                 .filter(
                     DimSupermarket.nombre == store,
-                    DimProduct.nombre.ilike(f"%{keyword}%")
+                    text("MATCH(dim_product.nombre, dim_product.marca, dim_product.search_tags) AGAINST (:kw IN BOOLEAN MODE)").params(kw=keyword)
                 )
                 .order_by(FactPrice.price)
                 .first()
@@ -265,6 +289,7 @@ def popular_products():
                 results.append({
                     "product_id":   row.product_id,
                     "nombre":       row.nombre,
+                    "marca":        row.marca or "",
                     "categoria":    row.categoria or "",
                     "presentacion": row.presentacion_raw or "",
                     "prices":       {store: int(row.price)},
@@ -274,6 +299,72 @@ def popular_products():
 
         return jsonify(results)
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/categories", methods=["GET"])
+def get_categories():
+    """Return top-level grocery categories with at least 10 products."""
+    BLOCK = {
+        "1", "6", "A", "Abrillantadores", "Aceto", "Anchoas", "Aros",
+        "Arrollado", "Arrollados", "Aseo", "Azul",
+        "Baldes", "Banana", "Barbacoa", "Barras", "Bocaditos",
+        "Bollos", "Bolsas", "Bombones", "Bovinos", "Brocoli",
+        "Budines", "Caballa", "Cebada", "Cebollas", "Chauchas",
+        "Chicles", "Chip", "Choritos", "Ciabatta",
+        "Con", "Condimento", "Cosméticos", "Crema", "Cucarachas",
+        "Cápsulas", "Danbo", "Detergente", "Donas", "Donuts",
+        "Dulce", "Duros", "Elaboración", "En", "Encurtidos",
+        "Energizantes", "Ensalada", "Entero", "Especiales",
+        "Espinacas", "Extracto", "Facturas", "Fajitas", "Farmacia",
+        "Fiambrería", "Filete", "Flanes", "Flautitas", "Fontina",
+        "Frutillas", "Fynbo", "Galletas,", "Garbanzos",
+        "Gin", "Gouda", "Guantes", "Hidratante", "Hierbas",
+        "Hormigas", "Huevo", "Instantáneo", "Jamón",
+        "Jugo", "Jurel", "Lasagna", "Lavado",
+        "Lechuga", "Limpia", "Limpiadores", "Listos", "Lomo",
+        "Madalenas", "Mani", "Mantecas", "Margarinas",
+        "Mate", "Membrillo", "Menudencias", "Mermeladas",
+        "Mezcla", "Mignon", "Mix", "Molde", "Molido",
+        "Moras", "Moscas", "Navidad", "Nuggets", "Nuggets,",
+        "Obleas", "Palitos", "Panaderia",
+        "Panificados", "Papa", "Papel", "Papeles",
+        "Para", "Pasta", "Pategras", "Patitas",
+        "Paté", "Pechuga", "Perfumeria", "Pescaderia",
+        "Pesto", "Piononos", "Pizzas,", "Platos",
+        "Polillas", "Polvo", "Por", "Porcinos",
+        "Porotos", "Premezcla", "Prepizza", "Productos",
+        "Pulpa", "Puré", "Queso", "Rebozador",
+        "Rebozados", "Relleno", "Rotiseria",
+        "Salmón", "Sandwiches", "Sardinas", "Semiconserva",
+        "Sémola", "Shampoo", "Sin", "Sopas,", "Suavizante",
+        "Supremas", "Tabletas", "Tostadas", "Tradicional",
+        "Tybo", "Varitas", "Vegetales", "Verdulería",
+        "X", "Yogur", "Zanahoria", "Ñoquis", "Carniceria",
+    }
+    try:
+        sql = text("""
+            SELECT SUBSTRING_INDEX(categoria, ' ', 1) AS top_cat, COUNT(*) AS cnt
+            FROM dim_product
+            WHERE categoria != '' AND categoria IS NOT NULL
+            GROUP BY top_cat
+            HAVING cnt >= 15
+            ORDER BY top_cat
+        """)
+        rows = db.session.execute(sql).fetchall()
+        result = [row[0] for row in rows if row[0] not in BLOCK]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/supermarkets", methods=["GET"])
+def get_supermarkets():
+    """Return list of all supermarket names."""
+    try:
+        rows = DimSupermarket.query.order_by(DimSupermarket.nombre).all()
+        return jsonify([s.nombre for s in rows])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
